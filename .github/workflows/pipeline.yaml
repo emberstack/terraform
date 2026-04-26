@@ -1,0 +1,342 @@
+name: pipeline
+
+# Trunk-based: `main` is the only long-lived branch and every merge to it is
+# released. Versions come from GitVersion.yaml.
+#
+# No cloud credentials anywhere — `validate -backend=false` resolves providers
+# from the registry and checks configuration statically.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Break glass: re-runs the pipeline against the current head of the selected
+  # branch. Deliberately takes no inputs — the version is always derived, and
+  # the tag check makes a dispatch on an already-released commit a no-op.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Matches the `required_version = ">= 1.15"` floor every module declares, so
+  # CI proves the floor is honest rather than testing some newer version.
+  TERRAFORM_VERSION: "1.15.8"
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+
+jobs:
+  discovery:
+    name: discovery
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # paths-filter reads the changed-file list from the pull request API. The
+      # top-level `contents: read` is not enough — without this it 403s on every
+      # pull request, which is the entire external-contribution path.
+      pull-requests: read
+    outputs:
+      version: ${{ steps.computed.outputs.version }}
+      tag: ${{ steps.computed.outputs.tag }}
+      release: ${{ steps.computed.outputs.release }}
+      # On a bootstrap run no baseline can see the whole tree, so the filters are
+      # forced rather than trusted. `steps.changes.outputs.modules || 'true'`
+      # would not work — the filter emits the *string* `false`, and a non-empty
+      # string is truthy in a GitHub expression, so the fallback never fires.
+      modules: ${{ steps.baseline.outputs.bootstrap == 'true' && 'true' || steps.changes.outputs.modules }}
+      docs: ${{ steps.baseline.outputs.bootstrap == 'true' && 'true' || steps.changes.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # GitVersion needs full history and every tag.
+          fetch-depth: 0
+
+      - name: Setup GitVersion
+        uses: gittools/actions/gitversion/setup@v4.7.0
+        with:
+          versionSpec: 6.x
+          preferLatestVersion: true
+
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4.7.0
+        with:
+          configFilePath: GitVersion.yaml
+
+      # Change detection must cover the same range the release covers: everything
+      # since the last tag, not just the latest push. Diffing one push lets a
+      # merge whose `validate` failed get released by a later docs-only merge —
+      # that run sees `modules == false`, skips fmt and validate entirely, and
+      # tags a version containing modules nothing ever checked.
+      - name: Resolve release baseline
+        id: baseline
+        run: |
+          set -euo pipefail
+          bootstrap=false
+          if tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
+            sha=$(git rev-list -n1 "$tag")
+            echo "Baseline: ${tag} (${sha})"
+          else
+            # Nothing released yet, so everything is unreleased — and no commit
+            # can express that. A diff from the root commit cannot see the files
+            # that commit itself introduced, and on a squashed single-commit
+            # history the root *is* HEAD, so the diff comes back empty and build
+            # is skipped for the very release that publishes the whole tree.
+            # The empty tree is not the way out: paths-filter resolves `base`
+            # through `git cat-file -e <sha>^{commit}`, which rejects a tree
+            # object outright. So keep a baseline it can resolve and force the
+            # filters above instead. Dormant once v0.1.0 exists.
+            sha=$(git rev-list --max-parents=0 HEAD | tail -1)
+            bootstrap=true
+            echo "Baseline: no v* tag yet — bootstrap run, building everything"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "bootstrap=${bootstrap}" >> "$GITHUB_OUTPUT"
+
+      # `base` is ignored on pull_request — the action diffs against the PR base.
+      #
+      # Any change under src/ validates the whole tree. Modules source each
+      # other by relative path, so an edit to one breaks callers nobody touched.
+      - name: Detect changes
+        id: changes
+        uses: dorny/paths-filter@v4
+        with:
+          base: ${{ steps.baseline.outputs.sha }}
+          filters: |
+            modules:
+              - 'src/**'
+              - '.github/workflows/pipeline.yaml'
+            # Broader than "files the consistency check reads": it must also
+            # cover every path the docs *link to*, or moving one of them skips
+            # build, merges green, and breaks CI for the next unrelated pull
+            # request. LICENSE, GitVersion.yaml, renovate.json and the chore
+            # workflows are all link targets.
+            docs:
+              - 'docs/**'
+              - '*.md'
+              - 'LICENSE'
+              - 'GitVersion.yaml'
+              - 'renovate.json'
+              - '.github/**'
+
+      - name: Evaluate release
+        id: computed
+        env:
+          DERIVED: ${{ steps.gitversion.outputs.GitVersion_MajorMinorPatch }}
+          # Same forcing as the job outputs, so the summary reports what build
+          # was actually gated on rather than what the filter returned.
+          MODULES: ${{ steps.baseline.outputs.bootstrap == 'true' && 'true' || steps.changes.outputs.modules }}
+          DOCS: ${{ steps.baseline.outputs.bootstrap == 'true' && 'true' || steps.changes.outputs.docs }}
+        run: |
+          set -euo pipefail
+
+          version="$DERIVED"
+          tag="v${version}"
+
+          # The `v` prefix is the consumer contract — every pinned source in the
+          # READMEs is `?ref=vX.Y.Z`. GitVersion cannot enforce it: `tag-prefix`
+          # is a read-side pattern for scanning history, and every version it
+          # emits is bare. So assert it here, where the tag is actually built.
+          # Also catches an empty $DERIVED, which `set -u` does not — the
+          # variable is set, just empty, which would tag the release `v`.
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Refusing to release malformed tag '${tag}'."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          release=true
+          note=""
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            release=false
+            note="not a push to main — build only"
+          else
+            # Check the remote rather than this checkout: another run may have
+            # tagged since the clone.
+            existing=$(git ls-remote --tags origin "refs/tags/${tag}" | awk '{print $1}')
+            if [ -n "$existing" ]; then
+              release=false
+              if [ "$existing" = "$GITHUB_SHA" ]; then
+                note="\`${tag}\` is already tagged at this commit — nothing to release"
+              else
+                note="\`${tag}\` already exists on a different commit — refusing to move it"
+                echo "::warning::${tag} already exists at ${existing}, not ${GITHUB_SHA} — refusing to move it."
+              fi
+            fi
+          fi
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### discovery"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| version | \`${tag}\` |"
+            echo "| modules changed | \`${MODULES:-unknown}\` |"
+            echo "| docs changed | \`${DOCS:-unknown}\` |"
+            echo "| will release | \`${release}\`${note:+ — ${note}} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Steps are gated on their own flag and on `!cancelled()` so a fmt failure
+  # still reports the docs and validate results — one push surfaces every
+  # problem, not just the first.
+  build:
+    name: build
+    needs: discovery
+    if: needs.discovery.outputs.modules == 'true' || needs.discovery.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        if: needs.discovery.outputs.modules == 'true'
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check formatting
+        if: needs.discovery.outputs.modules == 'true'
+        run: terraform fmt -recursive -check -diff
+
+      # Validates module structure as well as documentation, so it runs whenever
+      # build runs rather than only on doc changes — a new module under src/ with
+      # a missing outputs.tf or an undescribed variable must not slip past.
+      - name: Check consistency
+        if: ${{ !cancelled() }}
+        run: python3 .github/scripts/check-docs.py
+
+      - name: Validate modules
+        if: ${{ !cancelled() && needs.discovery.outputs.modules == 'true' }}
+        run: |
+          set -uo pipefail
+
+          # One shared plugin directory for all of the inits below. Not an
+          # optimisation: without it Terraform downloads a private copy of every
+          # provider into each module's .terraform/ — gigabytes, and a dozen
+          # copies of azurerm alone.
+          #
+          # Exported here rather than in `env:` — Terraform does not expand a
+          # leading `~` in TF_PLUGIN_CACHE_DIR, and `env:` values get no shell
+          # expansion, so the path has to be built at runtime.
+          export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+          # Every directory holding .tf files: modules, nested submodules, and
+          # any examples/.
+          mapfile -t dirs < <(
+            find src/modules -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u
+          )
+
+          # A sweep that checks nothing must never report success.
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "::error::No module directories found — refusing to pass."
+            exit 1
+          fi
+
+          echo "Validating ${#dirs[@]} directories."
+          failed=()
+
+          for dir in "${dirs[@]}"; do
+            if ! output=$(terraform -chdir="$dir" init -backend=false -no-color 2>&1); then
+              echo "::error file=$dir/versions.tf::terraform init failed"
+              echo "$output"
+              failed+=("$dir (init)")
+              continue
+            fi
+            if ! output=$(terraform -chdir="$dir" validate -no-color 2>&1); then
+              echo "::error file=$dir/main.tf::terraform validate failed"
+              echo "$output"
+              failed+=("$dir (validate)")
+            fi
+          done
+
+          {
+            echo "### build"
+            echo
+            echo "\`${#dirs[@]}\` directories checked, \`${#failed[@]}\` failed."
+            if [ ${#failed[@]} -gt 0 ]; then
+              echo
+              for entry in "${failed[@]}"; do echo "- \`$entry\`"; done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          [ ${#failed[@]} -eq 0 ]
+
+  # The single required check for branch protection. `build` cannot serve that
+  # role: it is skipped when a change touches neither modules nor docs, and a
+  # required check that reports nothing leaves the pull request unmergeable.
+  # This job always runs, so it always reports.
+  gate:
+    name: gate
+    needs: [discovery, build]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "::error::One or more pipeline jobs failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "::error::One or more pipeline jobs were cancelled"
+            exit 1
+          fi
+          echo "All pipeline jobs passed or were skipped"
+
+  # `always()` because build is legitimately skipped when a merge touched
+  # neither modules nor docs — that must still cut a version, since every merge
+  # to main is a release. A build that failed or was cancelled blocks it.
+  release:
+    name: release
+    needs: [discovery, build]
+    if: >-
+      always()
+      && needs.discovery.result == 'success'
+      && needs.discovery.outputs.release == 'true'
+      && needs.build.result != 'failure'
+      && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Shallow is enough: `gh release create --generate-notes` computes notes
+      # server-side, and `ls-remote` needs no local history.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.discovery.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # discovery checked this too, but the build ran in between and a
+          # concurrent run could have tagged since.
+          existing=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk '{print $1}')
+          if [ -n "$existing" ]; then
+            echo "::warning::${TAG} appeared during the build — not releasing."
+            echo "\`${TAG}\` appeared during the build — not released." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
+
+          echo "### release" >> "$GITHUB_STEP_SUMMARY"
+          echo "Released [\`$TAG\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})." \
+            >> "$GITHUB_STEP_SUMMARY"

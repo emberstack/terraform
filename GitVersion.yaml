@@ -1,0 +1,50 @@
+# GitVersion — trunk-based. `main` is the only long-lived branch and the
+# pipeline tags and releases every push to it.
+#
+#   `feat:` subject                                 -> minor
+#   anything else                                   -> patch
+#   `<type>!:` subject or `BREAKING CHANGE:` footer -> major
+#
+# Full behaviour: docs/contributing.md#releases
+
+workflow: GitHubFlow/v1
+
+# Floor for the first release. Ignored once tags go past it.
+next-version: 0.1.0
+
+# Two markers, both accepted. Conventional Commits (`feat!:`, a `BREAKING
+# CHANGE:` footer) because an external contributor is far more likely to know
+# it; `+semver: major` because that is what the other Emberstack pipelines use
+# and the muscle memory should transfer.
+major-version-bump-message: '(?m)^(?:\w+(?:\([^)]*\))?!:|BREAKING[ -]CHANGE:|\+semver:\s?(?:breaking|major))'
+
+# Only `feat:` earns a minor. A new module is additive surface that breaks no
+# existing caller, which is a minor under semver; a fix or a dependency bump is
+# not, and shipping one as a minor tells a consumer pinned to a tag that there
+# is something new to adopt when there is not.
+#
+# There is deliberately no patch-version-bump-message. Anything matching neither
+# this nor the major pattern falls through to the branch increment below, so an
+# unconventional subject under-reports rather than inflating.
+minor-version-bump-message: '(?m)^(?:feat(?:\([^)]*\))?:|\+semver:\s?(?:feature|minor))'
+
+# `(?!)` never matches, disabling no-bump entirely. This is load-bearing:
+# GitVersion evaluates no-bump BEFORE major-version-bump-message and
+# short-circuits, so under the stock pattern a `docs:` or `chore:` subject
+# carrying a `BREAKING CHANGE:` footer suppresses the major bump and ships a
+# contract break as a routine release.
+no-bump-message: '(?!)'
+
+branches:
+  main:
+    # ContinuousDeployment yields a clean X.Y.Z. ContinuousDelivery would append
+    # a `-1`, `-2` prerelease counter per commit.
+    mode: ContinuousDeployment
+    # The floor for anything the bump messages above do not match: fixes, docs,
+    # chores, dependency bumps.
+    #
+    # One bump per tag interval, not per commit. The pipeline tags every push,
+    # so the interval is normally a single merge — but when a release is skipped
+    # the next one covers both merges under a single version, and the strongest
+    # bump in the range wins. A patch release therefore never contains a `feat:`.
+    increment: Patch

@@ -1,0 +1,95 @@
+name: Chore - Cleanup - Stale
+run-name: "💤 Stale scan${{ github.event_name == 'workflow_dispatch' && format(' (manual by @{0})', github.actor) || ' (daily)' }}"
+
+# Structure imported from the solution repository's chore-cleanup-stale; the
+# thresholds, exempt labels and messages are not. That repository is internal,
+# where every participant is on one team and answers within a working day. This
+# one is public: the clock here measures maintainer latency at least as much as
+# it measures a reporter going quiet, so the fuses are long and the messages
+# say how to undo the outcome.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # Daily at 02:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: stale
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    name: stale
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Scan for stale items
+        uses: actions/stale@v10
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Issues get the long fuse. An unanswered bug report is usually
+          # waiting on a maintainer, and closing it punishes the reporter for
+          # that. Pull requests get a shorter one: an abandoned branch rots
+          # against `main`, and reopening costs the author nothing.
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          days-before-pr-stale: 30
+          days-before-pr-close: 14
+
+          stale-issue-message: >
+            No activity for 60 days, so this is now marked stale. A comment from
+            anyone resets the clock; otherwise it closes in 14 days. That is
+            housekeeping, not a verdict on the report.
+          # Not "comment and it reopens": actions/stale cannot reopen anything,
+          # and reopening an issue somebody else closed needs the Triage role,
+          # which an outside reporter does not have. Promising it to exactly the
+          # people who cannot do it is worse than saying nothing.
+          close-issue-message: >
+            Closed as stale. If it is still relevant, say so here and a
+            maintainer will reopen it — there is no need to file a new one.
+          stale-pr-message: >
+            No activity for 30 days, so this pull request is now marked stale.
+            Push a commit or leave a comment to keep it open; otherwise it
+            closes in 14 days. Convert it to a draft if you want to keep working
+            without the clock running.
+          close-pr-message: >
+            Closed as stale. The branch is untouched — reopen it whenever you
+            want to pick the work back up.
+
+          # close-issue-reason is left unset: it already defaults to
+          # `not_planned`, so an aged-out issue is visibly distinct from a fixed
+          # one without restating the default here.
+
+          # Labels
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+
+          # `good first issue` and `help wanted` are advertisements: they are
+          # meant to sit open until a stranger picks them up, so ageing them out
+          # defeats the point.
+          exempt-issue-labels: 'pinned,security,good first issue,help wanted'
+          # `dependencies` exempts Renovate's own pull requests. It rebases only
+          # on conflict, so an untouched one looks idle and would be swept — and
+          # `recreateWhen: auto` reads a closed pull request as a rejection, so
+          # the bot would not re-offer that version. A stale close would suppress
+          # the update outright rather than defer it.
+          exempt-pr-labels: 'pinned,security,dependencies'
+
+          # Anything a maintainer has milestoned is planned work, not drift.
+          exempt-all-milestones: true
+
+          # Work in the open without the clock running.
+          exempt-draft-pr: true
+
+          # Oldest first, so a backlog drains deterministically instead of the
+          # cap landing on the same recent items every run.
+          ascending: true
+
+          # Limits
+          operations-per-run: 100

@@ -1,0 +1,58 @@
+name: Bug report
+description: A module does not behave as documented
+labels: [bug]
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: Directory name under `src/modules/`.
+      placeholder: azure-res-network-privatednszone
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The `?ref=` you pinned, and your Terraform and provider versions.
+      placeholder: v0.1.0 / Terraform 1.15.8 / azurerm 4.81
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Module block
+      description: >-
+        The smallest `module` block that reproduces it. **Redact real hostnames, tenant and
+        subscription IDs, object IDs, serial numbers and internal domains** — this is a public
+        repository.
+      render: hcl
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Plan or apply output
+      description: Redact as above.
+      render: text
+
+  - type: checkboxes
+    id: perpetual
+    attributes:
+      label: Is this a perpetual diff?
+      description: >-
+        A plan that never converges because the provider returns a value you never set. It is the
+        dominant failure mode in the fortios family and several modules already work around it
+        deliberately — check the banner in the module's `main.tf` first.
+      options:
+        - label: A plan repeats the same change on every run with no config change

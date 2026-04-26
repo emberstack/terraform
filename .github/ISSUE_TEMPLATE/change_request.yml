@@ -1,0 +1,42 @@
+name: New module or change
+description: Propose a new module, or a change to an existing interface
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you proposing?
+      options:
+        - A new module
+        - A new input or output on an existing module
+        - A change to an existing input, output or default
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: The existing module, or the proposed name for a new one.
+      placeholder: azure-res-<service>-<resource>
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What can you not do today?
+      description: The configuration you are trying to express, and why the current interface blocks it.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: breaking
+    attributes:
+      label: Compatibility
+      description: >-
+        Every merge to `main` publishes a version, so anything that alters an existing contract is a
+        major bump and needs consumers to opt in. Additive changes with defaults are much easier to
+        land.
+      options:
+        - label: This changes an existing input, output, default, or resource address

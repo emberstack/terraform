@@ -1,0 +1,44 @@
+name: Chore - Cleanup - Workflow Runs
+run-name: "📦 Workflow runs cleanup${{ github.event_name == 'workflow_dispatch' && format(' (manual by @{0})', github.actor) || ' (daily)' }}"
+
+# Imported from the solution repository's chore-cleanup-workflow-runs.
+#
+# Scheduled away from 02:00 because `chore-cleanup-stale` and `chore-renovate`
+# sit there, and GitHub delays scheduled runs that pile onto a popular slot.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # Daily at 04:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup-workflow-runs
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: cleanup
+    runs-on: ubuntu-latest
+    permissions:
+      # The only grant this needs, and it is not a mild one: `actions: write`
+      # can delete run history. Scoped to this job rather than the workflow root
+      # so nothing else in the file inherits it.
+      actions: write
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2.1.0
+        with:
+          # Stated rather than left to default, because next to `actions: write`
+          # a reader should be able to confirm the scoped GITHUB_TOKEN is in use
+          # and no PAT. `repository` is omitted — it defaults to this repository
+          # and carries no information.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+          # The policy this workflow exists to express, so both are explicit even
+          # though 30 happens to match the action's default. `keep_minimum_runs`
+          # does not: the default is 6.
+          retain_days: 30
+          keep_minimum_runs: 5

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  "extends": ["config:recommended"],
+
+  "labels": ["dependencies", "maintenance"],
+  "baseBranchPatterns": ["main"],
+  "timezone": "Europe/Bucharest",
+
+  "minimumReleaseAge": "3 days",
+  "prCreation": "immediate",
+  "internalChecksFilter": "strict",
+
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
+  "recreateWhen": "auto",
+  "rebaseWhen": "conflicted",
+  "rebaseLabel": "rebase",
+
+  "branchPrefix": "chore/renovate/",
+
+  "separateMinorPatch": true,
+  "commitMessagePrefix": "chore(deps):",
+  "commitMessageExtra": "to {{#if isMajor}}v{{{newMajor}}}{{else}}{{#if isSingleVersion}}v{{{newVersion}}}{{else}}{{{newValue}}}{{/if}}{{/if}} ({{updateType}})",
+
+  "dependencyDashboard": true,
+  "vulnerabilityAlerts": { "enabled": true },
+
+  "enabledManagers": ["github-actions", "terraform", "custom.regex"],
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The Terraform version CI installs. It is a plain YAML env value, so no built-in manager sees it — without this the pipeline would silently sit on an ageing Terraform while every versions.tf stayed current",
+      "managerFilePatterns": ["/^\\.github/workflows/pipeline\\.yaml$/"],
+      "matchStrings": ["TERRAFORM_VERSION:\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "hashicorp/terraform",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ],
+
+  "packageRules": [
+    {
+      "description": "Renovate self-update, isolated from everything else so a bad bump to the bot cannot ride in with an unrelated batch",
+      "matchDepNames": ["renovatebot/github-action"],
+      "groupName": "renovate-self-update",
+      "automerge": false,
+      "schedule": ["before 10am on monday"]
+    },
+    {
+      "description": "All other workflow actions in one weekly batch, reviewed by hand. No automerge: every merge to main publishes a version",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["!renovatebot/github-action"],
+      "groupName": "github-actions",
+      "automerge": false,
+      "schedule": ["before 10am on monday"]
+    },
+    {
+      "description": "Provider constraints are hand-managed. Every versions.tf carries a floor and a cap below the next major, and that declared range is a compatibility promise to consumers, not a number to keep current — so Renovate is not allowed to rewrite it. Left to the default strategy it answers azurerm 5.0 by turning \">= 4.81, < 5.0\" into \"< 5.1\", which deletes the floor and admits the very major the cap exists to exclude, across every azurerm module in one routine-looking pull request. in-range-only forbids that: widening to a new provider major is a deliberate, tested change a maintainer makes by hand. The dashboard approval stays as a backstop so nothing in this family can open a pull request unattended",
+      "matchManagers": ["terraform"],
+      "rangeStrategy": "in-range-only",
+      "dependencyDashboardApproval": true,
+      "groupName": "terraform-providers"
+    },
+    {
+      "description": "CI installs the newest patch of the required_version floor on purpose, so the pipeline proves that floor is honest rather than testing something newer than the modules declare. A patch keeps that true and can open on its own. A minor or major breaks it: CI would start validating against a Terraform the modules never promised, and the honest fix is to raise all 74 required_version floors with it, which is a breaking change for consumers. So it waits for a tick",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["hashicorp/terraform"],
+      "matchUpdateTypes": ["minor", "major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Label pull requests for abandoned dependencies so they are obvious in review",
+      "matchJsonata": ["isAbandoned = true"],
+      "addLabels": ["abandoned-dependency"]
+    }
+  ],
+
+  "abandonmentThreshold": "1 year"
+}

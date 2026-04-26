@@ -1,0 +1,5 @@
+# Normalise line endings on commit. Without this, a contributor whose git has
+# core.autocrlf unset commits CRLF from Windows, and every `run:` block in
+# pipeline.yaml reaches the Linux runner with a trailing \r on each command —
+# the whole build dies on `syntax error near unexpected token $'do\r'`.
+* text=auto eol=lf

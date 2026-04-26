@@ -1,0 +1,116 @@
+name: Chore - Renovate
+run-name: "🤖 Renovate${{ github.event_name == 'workflow_dispatch' && format(' (manual by @{0})', github.actor) || '' }}"
+
+# The Mend GitHub App is deliberately not installed, so no third party holds a
+# standing grant on this repository. Renovate runs here instead, on a
+# GitHub-hosted runner, with the org PAT handed to the pinned third-party action
+# for the length of one step rather than left sitting on the repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: "Renovate log level"
+        type: choice
+        default: "info"
+        options:
+          - "debug"
+          - "info"
+          - "warn"
+          - "error"
+  push:
+    branches:
+      - main
+  # A pull request touching renovate.json is schema-checked by `validate-config`,
+  # which has no credentials in its environment — the file never reaches a
+  # token-bearing step before someone has reviewed it. The validator reads the
+  # schema only and performs no dependency lookups, so a config that parses but
+  # resolves badly still gets through. That is the price of keeping the PAT away
+  # from a file the pull request controls.
+  pull_request:
+    branches:
+      - main
+    # Only renovate.json: this workflow's own path is deliberately absent because
+    # editing the workflow is not a config change, and Renovate's self-update
+    # group — which bumps the `renovatebot/github-action` version here — has
+    # nothing for the validator to read.
+    #
+    # It is not a security boundary and must not be read as one. A `pull_request`
+    # run evaluates the workflow as the pull request has it, so the pull request
+    # controls this filter too. What actually keeps the PAT away from unreviewed
+    # code is the `if` on the `renovate` job below.
+    paths:
+      - "renovate.json"
+  schedule:
+    # 02:00 every weekday (Monday-Friday)
+    - cron: "0 2 * * 1-5"
+
+concurrency:
+  group: renovate
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-config:
+    name: validate-config
+    # Only on `pull_request`. Every other trigger already runs against reviewed
+    # code, where the `renovate` job reads the config for real.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # Stated rather than inherited, because holding nothing is this job's whole
+    # point: no secret in the environment, read-only on the repository. That is
+    # also why it carries no fork guard — with no token to be denied, a fork's
+    # pull request runs it exactly as a branch does, and an outside contributor
+    # gets a check that can go green instead of one skipped forever.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate renovate.json
+        # Run from the repository root so the file is picked up as repository
+        # config rather than global config — the tier it is actually merged at,
+        # and the one that rejects global-only keys such as `endpoint` or
+        # `exposeAllEnv`. Unpinned: nothing here holds a token for a bad release
+        # to take, but it does track whatever Renovate published last, so an
+        # upstream rename can redden this check with renovate.json untouched.
+        run: npx --yes --package renovate renovate-config-validator
+
+  renovate:
+    name: renovate
+    # Never on `pull_request`. `configurationFile` is loaded as Renovate's global
+    # config, the tier where `endpoint`, `binarySource`, `allowedCommands` and
+    # `exposeAllEnv` live and which no repository config is allowed to override
+    # — so an unreviewed branch could aim the platform init at another host and
+    # the PAT would follow it there. Reviewed code only.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # No job-level grant: it inherits the workflow root's `contents: read`, which
+    # is all `actions/checkout` needs. Renovate does every write — branches, pull
+    # requests, the dependency dashboard issue — through RENOVATE_TOKEN, not
+    # GITHUB_TOKEN, so write scopes here would be handed to a third-party action
+    # that has no use for them.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.1.20
+        with:
+          configurationFile: renovate.json
+        env:
+          # Org-level PAT. A pull request opened with it triggers `pipeline`,
+          # which the default GITHUB_TOKEN would not — so Renovate's own pull
+          # requests get validated like anyone else's.
+          RENOVATE_TOKEN: ${{ secrets.ES_GITHUB_PAT }}
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: optional
+          # No RENOVATE_BASE_BRANCH_PATTERNS here: renovate.json already sets
+          # `baseBranchPatterns`, repository config merges over env-derived
+          # global config, and the key is not mergeable — so the repository
+          # value replaces anything set here. It would be dead config.
+          LOG_LEVEL: ${{ github.event.inputs.log_level || 'info' }}
