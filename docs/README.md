@@ -14,14 +14,14 @@ Terraform modules for Azure, Entra ID, FortiGate and GitHub.
 Each family guide explains how that provider family behaves — the patterns it follows, the quirks it
 works around — and lists every module in it.
 
-| Family | Provider | Modules |
-|---|---|---|
-| [Azure](modules/azure.md) | `hashicorp/azurerm` | 17 |
-| [Entra ID](modules/entra.md) | `hashicorp/azuread` | 4 |
-| [FortiGate](modules/fortios.md) | `fortinetdev/fortios` | 39 |
-| [GitHub](modules/github.md) | `integrations/github` | 3 |
+| Family | Provider |
+|---|---|
+| [Azure](modules/azure.md) | `hashicorp/azurerm` |
+| [Entra ID](modules/entra.md) | `hashicorp/azuread` |
+| [FortiGate](modules/fortios.md) | `fortinetdev/fortios` |
+| [GitHub](modules/github.md) | `integrations/github` |
 
-Plus 11 nested submodules, documented alongside their parents.
+Nested submodules are documented alongside their parents.
 
 ## What these docs deliberately leave out
 

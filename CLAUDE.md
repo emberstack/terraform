@@ -19,9 +19,9 @@ A **library of reusable, independently-versioned Terraform modules** — not a d
 configuration, no state, no environment composition. Modules are consumed by *other* repos via a git
 source ref.
 
-Every module lives under `src/modules/<module-name>/` and stands on its own: **63** modules plus 11
-nested submodules — **74 module directories** to sweep. Per-family counts live in
-[docs/README.md](docs/README.md#module-reference).
+Every module lives under `src/modules/<module-name>/` and stands on its own. Some carry nested
+submodules under `modules/<child>/`; those are module directories too, so a tree-wide sweep has to
+include them. The inventory is [docs/modules/](docs/modules/) — nowhere else.
 
 ## Working here
 
@@ -44,8 +44,8 @@ terraform init -backend=false && terraform validate
 ```
 
 - `validate` needs `init` first to resolve providers and relative submodule sources.
-- Sweeping the tree: set `TF_PLUGIN_CACHE_DIR` first or you download providers 75 times. (75, not
-  74 — the sweep also inits the one `examples/basic/`, which the module count excludes.)
+- Sweeping the tree: set `TF_PLUGIN_CACHE_DIR` first, or you re-download every provider once per
+  module directory — plus the one `examples/basic/`, which inits like any other.
   Script in [contributing.md](docs/contributing.md#sweep-the-whole-tree).
 - **An `init` failure after a version bump is usually a stale local `.terraform.lock.hcl`, not a repo
   defect.** Re-run with `-upgrade`. Do not "fix" `versions.tf` to satisfy a stale lock.
@@ -145,14 +145,11 @@ changes `<type>!:` or with a `BREAKING CHANGE:` footer** or they release as rout
 
 ## Keeping docs in sync
 
-- The module inventory lives **only** in `docs/modules/*.md`. Don't reintroduce it elsewhere.
-- Adding a module touches five counts, all enforced by `check-docs.py`. All of them, or none — a
-  wrong count is worse than no count:
-  1. the row itself in the relevant [family guide](docs/modules/), and that file's header count;
-  2. the family table in [docs/README.md](docs/README.md#module-reference);
-  3. the family table in the root [README.md](README.md);
-  4. the `N modules plus N nested submodules` sentence in the root [README.md](README.md) — a
-     separate assertion from the table above it, and the one most often missed;
-  5. the totals at the top of this file.
+- The module inventory lives **only** in `docs/modules/*.md`. Adding a module means adding one row
+  to one family guide — `check-docs.py` fails a module on disk with no row, and a row with no module.
+  Don't reintroduce the inventory elsewhere.
+- **Never write a module count.** They were all removed deliberately. A tally in prose has to be
+  restated in every file that carries one, goes stale the moment it isn't, and buys a reader nothing
+  a list doesn't. The guides enumerate modules; they do not total them.
 - Per-module input/output tables are deliberately not generated — `variables.tf` and `outputs.tf` are
   the reference, and there is no CI to keep generated copies honest.

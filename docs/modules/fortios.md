@@ -1,7 +1,7 @@
 # FortiGate
 
-39 modules on `fortinetdev/fortios`, plus one nested submodule. The largest family
-in the repository, and the one with the most provider-specific behaviour to know about.
+Modules on the `fortinetdev/fortios` provider. The largest family in the repository, and the one
+with the most provider-specific behaviour to know about.
 
 Module names carry an extra platform segment — `fortios-<kind>-fortigate-<service>-<resource>` — with
 one exception: `fortios-utl-network-cidr` is pure arithmetic and touches no device.

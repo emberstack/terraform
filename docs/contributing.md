@@ -222,18 +222,20 @@ python .github/scripts/check-docs.py
 ```
 
 The one check that runs on **every** build, including changes that touch no Terraform at all. It
-verifies four things and exits non-zero on any of them:
+verifies three things and exits non-zero on any of them:
 
 | | |
 |---|---|
 | Links and anchors | every relative link and `#anchor` in the documentation resolves |
 | Inventory | every module directory on disk appears in a family guide, and vice versa |
-| Counts | the five [module counts](../CLAUDE.md#keeping-docs-in-sync) match what is on disk |
 | Structure | the four required files per module, and a `description` on every variable and output |
 
 Run it from the repository root. It needs no providers, no network and no credentials, so it is the
 cheapest of the three to run and the one most likely to catch you out — a renamed heading or a new
 module both fail it.
+
+It deliberately does **not** check module counts, because the docs deliberately don't state any —
+see [Keeping docs in sync](../CLAUDE.md#keeping-docs-in-sync).
 
 ### Validate a single module
 
@@ -294,11 +296,8 @@ Re-run with `terraform init -upgrade`. This is a local artefact, never a reposit
 5. **Validate inputs** — length bounds, enums, regex — to the azure/entra standard, except where the
    provider schema does not let you prove the accepted values.
 6. **Add a banner** to `main.tf` only if there is non-obvious behaviour to explain.
-7. **Add the module** to the relevant family guide in [`docs/modules/`](modules/) — the row itself
-   *and* that file's header count — then update the four other counts CI enforces: the family table
-   in [`docs/README.md`](README.md), the family table in the root `README.md`, the
-   `N modules plus N nested submodules` sentence in the root `README.md`, and the totals at the top
-   of `CLAUDE.md`. All of them, or none.
+7. **Add the module** to the relevant family guide in [`docs/modules/`](modules/) — one row, and
+   that is the whole documentation obligation. No counts to update anywhere; don't add any.
 8. `terraform fmt`, `init -backend=false`, `validate`, and
    [`check-docs.py`](#consistency-checks) — the last one is what verifies steps 2, 4 and 7.
 
@@ -466,7 +465,7 @@ That pin is deliberately the newest patch of the `required_version` floor, so th
 floor is honest rather than testing something newer than the modules declare. A patch keeps that true
 and opens on its own. A minor or major would quietly break it — CI would start validating against a
 Terraform the modules never promised — so it waits for a tick on the dashboard, and taking it means
-raising all 74 floors with it as a marked breaking change.
+raising the floor in every `versions.tf` with it as a marked breaking change.
 
 A pull request that edits `renovate.json` is schema-checked by a separate `validate-config` job that
 holds **no credentials at all**, so the one file a pull request fully controls never reaches the step

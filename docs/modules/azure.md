@@ -1,6 +1,6 @@
 # Azure
 
-17 modules on `hashicorp/azurerm`, plus one nested submodule.
+Modules on the `hashicorp/azurerm` provider.
 
 Input shapes mirror [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) where an
 AVM equivalent exists — `name`, `resource_group_name`, `tags`, `role_assignments` — and add what AVM

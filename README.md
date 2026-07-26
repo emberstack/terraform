@@ -38,15 +38,15 @@ FortiGate modules carry an extra platform segment: `fortios-<kind>-fortigate-<se
 
 ## Modules
 
-63 modules plus 11 nested submodules. Each family guide lists every module in it and explains how that
-provider family behaves.
+Each family guide lists every module in it and explains how that provider family behaves. Some
+modules carry nested submodules, documented alongside their parent.
 
-| Family | Provider | Modules | |
-|---|---|---|---|
-| Azure | `hashicorp/azurerm` | 17 | [Guide](docs/modules/azure.md) |
-| Entra ID | `hashicorp/azuread` | 4 | [Guide](docs/modules/entra.md) |
-| FortiGate | `fortinetdev/fortios` | 39 | [Guide](docs/modules/fortios.md) |
-| GitHub | `integrations/github` | 3 | [Guide](docs/modules/github.md) |
+| Family | Provider | |
+|---|---|---|
+| Azure | `hashicorp/azurerm` | [Guide](docs/modules/azure.md) |
+| Entra ID | `hashicorp/azuread` | [Guide](docs/modules/entra.md) |
+| FortiGate | `fortinetdev/fortios` | [Guide](docs/modules/fortios.md) |
+| GitHub | `integrations/github` | [Guide](docs/modules/github.md) |
 
 ## Requirements
 

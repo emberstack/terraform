@@ -29,16 +29,16 @@ azure-res-network-privatednszone
 
 ### The FortiGate platform segment
 
-FortiGate modules carry an extra segment: `fortios-<kind>-fortigate-<service>-<resource>`. All 38
-device-facing FortiGate modules use it. The one exception is `fortios-utl-network-cidr`, which is
+FortiGate modules carry an extra segment: `fortios-<kind>-fortigate-<service>-<resource>`. Every
+device-facing FortiGate module uses it. The one exception is `fortios-utl-network-cidr`, which is
 pure arithmetic and touches no device.
 
 ### `ptn` does not imply delegation
 
-Only 5 of the 19 pattern modules source a sibling `res` module. The other 14 declare provider
-resources inline, deliberately — it keeps the pattern self-contained when it is copied into a
-Terragrunt cache, at the cost of some duplication. `fortios-ptn-fortigate-router-static-collection`
-inlines even though a sibling `res` module exists.
+Most pattern modules do not source a sibling `res` module — they declare provider resources inline,
+deliberately. It keeps the pattern self-contained when it is copied into a Terragrunt cache, at the
+cost of some duplication. `fortios-ptn-fortigate-router-static-collection` inlines even though a
+sibling `res` module exists.
 
 Don't "fix" an inlining pattern module into a delegating one without a reason beyond tidiness.
 

@@ -1,6 +1,6 @@
 # Entra ID
 
-4 modules on `hashicorp/azuread`, plus two nested submodules.
+Modules on the `hashicorp/azuread` provider.
 
 ## Modules
 

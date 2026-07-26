@@ -5,13 +5,16 @@ Run locally from the repository root:
 
     python .github/scripts/check-docs.py
 
-Verifies four things that would otherwise rot silently:
+Verifies three things that would otherwise rot silently:
 
   1. every relative link and heading anchor resolves
   2. every module on disk is linked exactly once from a family guide
-  3. every module count written in prose matches what is on disk
-  4. every module has the four required files, and every variable and output
+  3. every module has the four required files, and every variable and output
      carries a description
+
+Module counts written in prose are deliberately not checked, because they are
+deliberately not written: the family guides list modules, they do not tally
+them. Adding a module should touch one file, not six.
 
 Exits non-zero if any category fails.
 """
@@ -25,7 +28,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULES_DIR = ROOT / "src" / "modules"
-FAMILIES = ("azure", "entra", "fortios", "github")
 
 failures = []
 
@@ -174,65 +176,7 @@ def check_inventory(on_disk):
 
 
 # ---------------------------------------------------------------------------
-# 3. counts written in prose
-# ---------------------------------------------------------------------------
-
-def expect(label, pattern, text, source, actual):
-    """Assert the single capture group of `pattern` equals `actual`."""
-    match = re.search(pattern, text, re.M)
-    if not match:
-        note("counts", "%s: pattern for %s no longer matches — update the checker "
-                       "or restore the sentence" % (source, label))
-        return
-    found = int(match.group(1))
-    if found != actual:
-        note("counts", "%s: %s says %d, disk says %d" % (source, label, found, actual))
-
-
-def check_counts(on_disk):
-    per_family = {f: len([m for m in on_disk if m.startswith(f + "-")]) for f in FAMILIES}
-    total = len(on_disk)
-    # Same exclusions as module_dirs(). Without them a local `terraform init`
-    # leaves .terraform/ caches behind and an examples/basic/versions.tf counts
-    # as a submodule, so the check would disagree with itself depending on
-    # whether you had validated first.
-    submodules = len([
-        p for p in MODULES_DIR.glob("*/**/versions.tf")
-        if p.parent != MODULES_DIR / p.relative_to(MODULES_DIR).parts[0]
-        and ".terraform" not in p.parts
-        and "examples" not in p.parts
-    ])
-
-    for family in FAMILIES:
-        guide = ROOT / "docs" / "modules" / ("%s.md" % family)
-        expect("header count", r"^(\d+) modules on ", guide.read_text(encoding="utf-8"),
-               rel(guide), per_family[family])
-
-    docs_index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
-    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for family in FAMILIES:
-        expect("%s row" % family,
-               r"\[[^\]]+\]\(modules/%s\.md\)[^|]*\|[^|]*\|\s*(\d+)\s*\|" % family,
-               docs_index, "docs/README.md", per_family[family])
-        expect("%s row" % family,
-               r"\|[^|]*\|[^|]*\|\s*(\d+)\s*\|[^|]*docs/modules/%s\.md" % family,
-               root_readme, "README.md", per_family[family])
-
-    expect("module total", r"^(\d+) modules plus \d+ nested submodules",
-           root_readme, "README.md", total)
-    expect("submodule total", r"^\d+ modules plus (\d+) nested submodules",
-           root_readme, "README.md", submodules)
-
-    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    expect("module total", r"\*\*(\d+)\*\* modules plus", claude, "CLAUDE.md", total)
-    expect("submodule total", r"\*\*\d+\*\* modules plus (\d+)\s*\n?nested submodules",
-           claude, "CLAUDE.md", submodules)
-    expect("directory total", r"\*\*(\d+) module directories\*\*",
-           claude, "CLAUDE.md", total + submodules)
-
-
-# ---------------------------------------------------------------------------
-# 4. module structure
+# 3. module structure
 # ---------------------------------------------------------------------------
 
 REQUIRED_FILES = ("main.tf", "variables.tf", "outputs.tf", "versions.tf")
@@ -345,7 +289,6 @@ def main():
     files = doc_files()
     checked = check_links(files)
     linked = check_inventory(on_disk)
-    check_counts(on_disk)
 
     dirs = module_dirs()
     described = check_structure(dirs)

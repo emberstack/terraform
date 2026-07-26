@@ -1,6 +1,6 @@
 # GitHub
 
-3 modules on `integrations/github`, plus seven nested submodules.
+Modules on the `integrations/github` provider.
 
 ## Modules
 
