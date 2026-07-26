@@ -332,20 +332,24 @@ jobs:
           fi
           echo "All pipeline jobs passed or were skipped."
 
-  # `always()` because build is legitimately skipped when a merge touched
-  # neither modules nor docs. That no longer releases either — the `src` gate in
-  # `discovery` handles it — but the condition still has to tolerate a skipped
-  # build so a docs merge that DOES ride out with a module change is not blocked
-  # by it. A build that failed or was cancelled always blocks.
+  # Depends on `gate`, not on `build`, so there is exactly one definition of
+  # "everything passed". Re-deriving it here — `build.result != failure` and so
+  # on — meant a job added later had to be wired into `gate` *and* remembered
+  # here, and forgetting the second one publishes something that never passed.
+  #
+  # That dependency also removes the need for `always()`. A skipped job normally
+  # skips its dependents, which is why this used to need it: `build` is
+  # legitimately skipped when a merge touches neither modules nor docs. `gate`
+  # carries `if: always()`, so it is never skipped and absorbs that — with
+  # `build` skipped its `needs.*.result` is `[success, skipped]`, neither
+  # `failure` nor `cancelled`, so it passes and the release proceeds.
+  #
+  # `discovery` stays in `needs` only because this job reads its outputs; a
+  # failed `discovery` already fails `gate`, which skips this job.
   release:
     name: release
-    needs: [discovery, build]
-    if: >-
-      always()
-      && needs.discovery.result == 'success'
-      && needs.discovery.outputs.release == 'true'
-      && needs.build.result != 'failure'
-      && needs.build.result != 'cancelled'
+    needs: [discovery, gate]
+    if: needs.discovery.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

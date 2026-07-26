@@ -33,7 +33,7 @@ request against `main`:
 | `discovery` | Resolves the version from GitVersion and decides whether this run releases |
 | `build` | `terraform fmt`, the consistency checks, then `init -backend=false` + `validate` over [what actually changed](#what-triggers-what) |
 | `gate` | Aggregates the results into one always-reporting status — **this is the required check** |
-| `release` | Tags and publishes — on `main` only (push, or break-glass dispatch), when something under `src/` changed, `discovery` resolved an unreleased version, and `build` did not fail or get cancelled |
+| `release` | Tags and publishes — runs behind `gate`, on `main` only (push, or break-glass dispatch), when something under `src/` changed and `discovery` resolved an unreleased version |
 
 `build` does not recompute the version; it is resolved once in `discovery` and read from its outputs.
 
@@ -180,9 +180,10 @@ graph.
 
 A merge that touches neither modules nor docs skips `build` entirely — and no longer releases
 either, because the release gate asks for a change under `src/`. That closes a hole worth knowing
-about: `release` uses `always()` with an explicit check that `build` did not *fail*, and a *skipped*
-build is neither failed nor cancelled, so before the gate a `.gitignore` edit published a version
-having run no checks at all.
+about: `release` used to sit beside `gate` with its own copy of the pass check, and a *skipped*
+build is neither failed nor cancelled — so before the `src` gate a `.gitignore` edit published a
+version having run no checks at all. `release` now depends on `gate` instead, which is the only
+place that decides whether everything passed.
 
 If the sweep ever resolves zero directories it fails rather than reporting a green tick.
 
