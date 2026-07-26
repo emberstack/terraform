@@ -22,8 +22,8 @@ module "vnet_link" {
 
 ## Pinning
 
-**Pin `ref` to a tag.** Every push to `main` publishes a semver tag and a GitHub Release —
-see [Releases](contributing.md#releases) — so tags are immutable and carry generated notes.
+**Pin `ref` to a tag.** Every module change merged to `main` publishes a semver tag and a GitHub
+Release — see [Releases](contributing.md#releases) — so tags are immutable and carry generated notes.
 
 Tracking a branch means an unannounced change reaches you on your next `terraform init`, with no
 version gate and no staged rollout.

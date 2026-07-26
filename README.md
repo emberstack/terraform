@@ -15,7 +15,7 @@ module "example" {
 }
 ```
 
-> **Pinning:** pin `ref` to a semver tag, published automatically on every push to `main`.
+> **Pinning:** pin `ref` to a semver tag, published automatically whenever a module change lands on `main`.
 > Tracking `main` instead means an unannounced change lands on your next `terraform init`.
 
 Modules declare `required_providers` but never configure a provider. The consuming configuration is

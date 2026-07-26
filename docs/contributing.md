@@ -2,9 +2,14 @@
 
 ## Before you change anything
 
-**Every merge to `main` is a release.** This repository is trunk-based: `main` is the only long-lived
-branch, and merging to it tags a version and publishes it automatically. There is no staging branch
-between your PR and a consumer's `terraform init`.
+**Every merge that touches `src/` is a release.** This repository is trunk-based: `main` is the only
+long-lived branch, and merging a module change to it tags a version and publishes it automatically.
+There is no staging branch between your PR and a consumer's `terraform init`.
+
+Docs, CI and repository config do not publish. A consumer resolves `//src/modules/<name>` at a ref,
+so nothing outside `src/` reaches them — numbering it would ship a release identical to the one
+before it. Those commits are not stranded: they stay unreleased until the next module change carries
+them out, and the notes cover the whole range since the last tag, so they still appear.
 
 That makes interface stability the default posture:
 
@@ -28,7 +33,7 @@ request against `main`:
 | `discovery` | Resolves the version from GitVersion and decides whether this run releases |
 | `build` | `terraform fmt`, the consistency checks, then `init -backend=false` + `validate` over [what actually changed](#what-triggers-what) |
 | `gate` | Aggregates the results into one always-reporting status — **this is the required check** |
-| `release` | Tags and publishes — on `main` only (push, or break-glass dispatch), when `discovery` resolved an unreleased version and `build` did not fail or get cancelled. A *skipped* `build` still releases |
+| `release` | Tags and publishes — on `main` only (push, or break-glass dispatch), when something under `src/` changed, `discovery` resolved an unreleased version, and `build` did not fail or get cancelled |
 
 `build` does not recompute the version; it is resolved once in `discovery` and read from its outputs.
 
@@ -144,13 +149,18 @@ configuration statically.
 `discovery` classifies the change with `dorny/paths-filter` and `build` skips the steps that cannot
 be affected:
 
-| Changed | `fmt` + `validate` | consistency checks |
-|---|---|---|
-| `src/**` | yes | yes |
-| `docs/**`, `*.md` | no | yes |
-| `.github/workflows/pipeline.yaml` | yes | yes |
-| `.github/**`, `LICENSE`, `GitVersion.yaml`, `renovate.json`, `cliff.toml` | no | yes |
-| anything else | no | no — `build` is skipped entirely |
+| Changed | `fmt` + `validate` | consistency checks | releases |
+|---|---|---|---|
+| `src/**` | yes | yes | **yes** |
+| `docs/**`, `*.md` | no | yes | no |
+| `.github/workflows/pipeline.yaml` | yes | yes | no |
+| `.github/**`, `LICENSE`, `GitVersion.yaml`, `renovate.json`, `cliff.toml` | no | yes | no |
+| anything else | no | no — `build` is skipped entirely | no |
+
+Three filters, not two. `src` exists only to gate the release and is deliberately narrower than
+`modules`: a change to `pipeline.yaml` has to re-validate the whole tree, but re-validating is not a
+reason to publish — no module moved. `LICENSE` is in `docs` for the same reason; it is worth a
+consistency check, and a licence change can ride out with the next module release.
 
 The `docs` filter is wider than the set of files the consistency check *reads*, because it must also
 cover every path the documentation *links to*. `LICENSE`, `GitVersion.yaml`, `renovate.json`,
@@ -168,9 +178,11 @@ they source each other by relative path, so editing `entra-res-group/modules/mem
 Validating the whole tree removes that question rather than trying to answer it with a dependency
 graph.
 
-A merge that touches neither modules nor docs still releases. `build` is skipped, and `release` uses
-`always()` with an explicit check that `build` did not *fail* — because on a trunk-based repo every
-merge to `main` is a release, even a `LICENSE` fix.
+A merge that touches neither modules nor docs skips `build` entirely — and no longer releases
+either, because the release gate asks for a change under `src/`. That closes a hole worth knowing
+about: `release` uses `always()` with an explicit check that `build` did not *fail*, and a *skipped*
+build is neither failed nor cancelled, so before the gate a `.gitignore` edit published a version
+having run no checks at all.
 
 If the sweep ever resolves zero directories it fails rather than reporting a green tick.
 
@@ -333,8 +345,8 @@ underlying resource is `fortios_wirelesscontroller_setting`.
 
 ## Releases
 
-The pipeline tags and publishes a GitHub Release on every push to `main`. The version comes from
-[GitVersion.yaml](../GitVersion.yaml):
+The pipeline tags and publishes a GitHub Release on every push to `main` **that changes something
+under `src/`**. The version comes from [GitVersion.yaml](../GitVersion.yaml):
 
 | Merge to `main` | Bump |
 |---|---|
@@ -347,8 +359,9 @@ the definition of a minor. A fix or a dependency bump is not, and numbering one 
 consumer pinned to a tag that there is something new to adopt when there is not. A subject matching
 neither pattern falls through to patch, so a sloppy message under-reports rather than inflates.
 
-Every merge still gets a version, including `docs:` and `chore:` ones — on a trunk-based repo the
-change reached consumers the moment it landed, so it should be numbered.
+A `docs:` or `chore:` merge that leaves `src/` alone gets no version of its own. It is not lost —
+the next module change releases the whole range since the last tag, and its notes list every commit
+in it. Only a change a consumer can actually resolve earns a number.
 
 ```
 v0.1.0 --feat--> v0.2.0 --fix--> v0.2.1 --feat!--> v0.3.0 --+semver: major--> v1.0.0
@@ -538,9 +551,9 @@ workflow so a rarely-triggered one never disappears entirely.
 This removes the run records themselves, which is a different thing from GitHub's built-in *log and
 artifact* retention — that is a repository setting, defaults to 90 days, and is untouched here.
 
-⚠️ Deleting a run destroys the evidence of what CI did for a given tag. On a repository where every
-merge to `main` is a release, the run that validated and published `v0.3.0` is the only record of
-which Terraform version and which providers it was checked against. The release, the tag and the
+⚠️ Deleting a run destroys the evidence of what CI did for a given tag. The run that validated and
+published `v0.3.0` is the only record of which Terraform version and which providers it was checked
+against. The release, the tag and the
 commit all survive; the proof does not.
 
 ### How actions are pinned

@@ -4,8 +4,9 @@
 
 ## Release impact
 
-**Every merge to `main` publishes a version.** There is no staging branch between this pull request
-and a consumer's `terraform init`. Pick one:
+**A merge that touches `src/` publishes a version.** There is no staging branch between this pull
+request and a consumer's `terraform init`. Docs- and CI-only changes do not release; they ride out
+with the next module change. Pick one:
 
 - [ ] **Additive** — a new module, a new optional input with a default. Title it `feat:`; ships as a
       minor.

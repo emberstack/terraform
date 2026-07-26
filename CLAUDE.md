@@ -29,8 +29,9 @@ CI is [`.github/workflows/pipeline.yaml`](.github/workflows/pipeline.yaml), four
 **discovery → build → gate → release**. `discovery` resolves the version, `build` runs `fmt` + the docs
 check + `validate`, `gate` is the single required status check, and `release` tags and publishes.
 `build` is skipped entirely when a change touches neither `src/` nor the docs; any change under `src/`
-validates the whole tree. Every merge to `main` is released — **`feat:` bumps the minor and anything else
-the patch. A major is never inferred: ask for it with `+semver: major` or a bumped `next-version`.**
+validates the whole tree. Every merge that touches `src/` is released — **`feat:` bumps the minor and
+anything else the patch. A major is never inferred: ask for it with `+semver: major` or a bumped
+`next-version`.** Docs- and CI-only merges do not publish.
 ([details](docs/contributing.md#what-ci-runs))
 
 Run the same checks locally before pushing:
@@ -54,8 +55,10 @@ terraform init -backend=false && terraform validate
 
 These are the ones that cause real damage when ignored. Each links to the reasoning.
 
-1. **Every merge to `main` is a release.** Trunk-based: there is one long-lived branch, and merging
-   to it tags a version and publishes it. The commit subject picks the segment — `feat:` a minor,
+1. **Every merge that touches `src/` is a release.** Trunk-based: there is one long-lived branch,
+   and merging a module change to it tags a version and publishes it. Docs, CI and repository config
+   do not publish — a consumer resolves `//src/modules/<name>`, so nothing outside `src/` reaches
+   them. The commit subject picks the segment — `feat:` a minor,
    anything else a patch. Verify a module's interface and behaviour before changing either, and
    prefer additive changes with defaults. A breaking change is not forbidden, but it does **not**
    bump the major on its own: mark it `<type>!:` or with a `BREAKING CHANGE:` footer so the release
@@ -140,7 +143,7 @@ chore: update provider versions for compatibility
 ```
 
 Trunk-based: `main` is the only long-lived branch. Work on short-lived branches and open a PR
-against `main`. Every merge ships a version — `feat:` a minor, anything else a patch. **Mark breaking
+against `main`. A merge touching `src/` ships a version — `feat:` a minor, anything else a patch. **Mark breaking
 changes `<type>!:` or with a `BREAKING CHANGE:` footer** or they release as routine ones — see
 [GitVersion.yaml](GitVersion.yaml).
 
