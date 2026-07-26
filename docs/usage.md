@@ -6,7 +6,7 @@ Modules are consumed by git source ref. There is no registry publication.
 
 ```hcl
 module "example" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/<module-name>?ref=<ref>"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/<module-name>?ref=vX.Y.Z"
 
   # module inputs
 }
@@ -16,7 +16,7 @@ Nested submodules are addressable exactly the same way — the `//` path just go
 
 ```hcl
 module "vnet_link" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone/modules/vnet-link?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone/modules/vnet-link?ref=vX.Y.Z"
 }
 ```
 
@@ -30,7 +30,7 @@ version gate and no staged rollout.
 
 ```hcl
 # Good — immutable, and the release notes tell you what changed
-?ref=v0.1.0
+?ref=vX.Y.Z
 
 # Also immutable, but no notes and no ordering
 ?ref=1a2b3c4d5e6f7890abcdef1234567890abcdef12
@@ -39,7 +39,8 @@ version gate and no staged rollout.
 ?ref=main
 ```
 
-`v0.1.0` is the first release. Module READMEs pin to it; bump as you adopt later versions.
+Examples throughout the documentation write `vX.Y.Z`. Substitute the release you are adopting — the
+[releases page](https://github.com/emberstack/terraform/releases) lists them newest first.
 
 ## Providers are the caller's responsibility
 
@@ -53,7 +54,7 @@ provider "azurerm" {
 }
 
 module "private_dns_zone" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone?ref=vX.Y.Z"
 
   name                = "privatelink.blob.core.windows.net"
   resource_group_name = "rg-example"
@@ -76,7 +77,7 @@ provider "fortios" {
 }
 
 module "site_a_policy" {
-  source    = "git::https://github.com/emberstack/terraform.git//src/modules/fortios-res-fortigate-firewall-policy?ref=v0.1.0"
+  source    = "git::https://github.com/emberstack/terraform.git//src/modules/fortios-res-fortigate-firewall-policy?ref=vX.Y.Z"
   providers = { fortios = fortios.site_a }
 
   # ...
@@ -85,28 +86,12 @@ module "site_a_policy" {
 
 ## Version requirements
 
-| | Constraint |
-|---|---|
-| Terraform | `>= 1.15` |
-| `hashicorp/azurerm` | `>= 4.81, < 5.0` |
-| `hashicorp/azuread` | `>= 3.9, < 4.0` |
-| `integrations/github` | `>= 6.13, < 7.0` |
-| `fortinetdev/fortios` | `>= 1.25, < 2.0` |
-| `magodo/restful` | `>= 0.25.2, < 1.0` |
-| `hashicorp/random` | `>= 3.9, < 4.0` |
+**Each module's `versions.tf` is authoritative** — read it rather than a table here, which would be
+one more thing to bump.
 
-Every constraint carries an upper bound below the next major, so a provider major release cannot
-reach you unannounced. Floors are set to the newest published version at the time of writing, which
-means a fresh `init` normally resolves to the floor exactly.
-
-`required_version = ">= 1.15"` is uniform across all 74 module directories.
-
-### Why azurerm is capped below 5.0
-
-`azure-res-policy-set-definition` uses `management_group_id` on `azurerm_policy_set_definition`, which
-azurerm v5.0 removes. Migrating means switching resource types, which changes the resource address and
-would destroy and recreate live policy set definitions. The cap is load-bearing until that migration
-lands with `moved` blocks. See [Contributing](contributing.md#known-deferred-work).
+Every provider constraint carries an upper bound below the next major, so a major release cannot
+reach you unannounced. Floors are the newest published version at the time of writing, so a fresh
+`init` normally resolves to the floor exactly. `required_version` is uniform across the tree.
 
 ## Lock files
 

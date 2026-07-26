@@ -20,7 +20,7 @@ This pattern follows AVM's classification: it's a **pattern module** (`entra-ptn
 
 ```hcl
 module "ops_groups" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-ptn-group-collection?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-ptn-group-collection?ref=vX.Y.Z"
 
   groups = {
     operators = {
@@ -64,7 +64,7 @@ locals {
 
 # Iterate over all groups (e.g., to assign them to an AU)
 module "iam_au_members" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit/modules/member?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit/modules/member?ref=vX.Y.Z"
 
   administrative_unit_object_id = "..."
   members = {
@@ -73,38 +73,10 @@ module "iam_au_members" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `groups` | `map(object)` | `{}` | Map of group configurations. Key is a stable identifier (used as the `for_each` address); value mirrors the input shape of [`entra-res-group`](../entra-res-group/). |
-
-### `groups[*]` shape
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `display_name` | `string` | — | **Required.** 1–256 characters. |
-| `description` | `string` | `null` | Up to 1024 characters. |
-| `mail_enabled` | `bool` | `false` | At least one of `mail_enabled` or `security_enabled` must be `true`. |
-| `security_enabled` | `bool` | `true` | At least one of `mail_enabled` or `security_enabled` must be `true`. |
-| `mail_nickname` | `string` | `null` | Required when `mail_enabled = true` or `types` includes `"Unified"`. |
-| `assignable_to_role` | `bool` | `false` | Immutable after creation. |
-| `prevent_duplicate_names` | `bool` | `false` | Create-time check only. |
-| `visibility` | `string` | `null` | One of `Private`, `Public`, `HiddenMembership`. |
-| `types` | `set(string)` | `[]` | Use `["Unified"]` for M365 groups. |
-| `behaviors` | `set(string)` | `[]` | e.g. `AllowOnlyMembersToPost`, `HideGroupInOutlook`. |
-| `administrative_unit_ids` | `list(string)` | `[]` | AUs the group should belong to (atomic placement at creation). |
-| `dynamic_membership` | `object({enabled, rule})` | `null` | When set, `members` must be empty. |
-| `owners` | `map(string)` | — | **Required, ≥1 entry.** |
-| `members` | `map(string)` | `{}` | Cannot be used together with `dynamic_membership`. |
-
-All field-level validation is inherited from [`entra-res-group`](../entra-res-group/) — same UUID checks, length checks, mutually-exclusive checks. Errors at plan time are reported with their full module path: `module.<your-name>.module.group["<key>"].<field>`.
-
-## Outputs
-
-| Name | Type | Description |
-|---|---|---|
-| `groups` | `map(object)` | Map of created groups, keyed by the input map key. Each entry exposes the same outputs as the singular `entra-res-group` module (`id`, `object_id`, `display_name`, `mail`, `mail_nickname`, `members`). |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Examples
 
@@ -117,8 +89,6 @@ All field-level validation is inherited from [`entra-res-group`](../entra-res-gr
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azuread` `>= 3.9, < 4.0`
 
 The provider must be authenticated as a principal with permissions to create groups (typically **Groups Administrator** or **Privileged Role Administrator** for role-assignable groups).
 

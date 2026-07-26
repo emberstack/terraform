@@ -9,7 +9,7 @@ environment composition here — modules are consumed from other repositories by
 
 ```hcl
 module "example" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/<module-name>?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/<module-name>?ref=vX.Y.Z"
 
   # ...
 }
@@ -50,9 +50,9 @@ provider family behaves.
 
 ## Requirements
 
-Terraform `>= 1.15` across every module. Provider constraints are declared per module in its
-`versions.tf` and all carry an upper bound below the next major, so a provider major release cannot
-reach you unannounced — see the [version matrix](docs/usage.md#version-requirements).
+Terraform and provider constraints are declared per module in its `versions.tf`, which is the
+authoritative source. All carry an upper bound below the next major, so a provider major release
+cannot reach you unannounced — see [Usage](docs/usage.md#version-requirements).
 
 ## Repository layout
 

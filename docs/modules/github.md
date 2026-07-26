@@ -1,6 +1,6 @@
 # GitHub
 
-3 modules on `integrations/github` (`>= 6.13, < 7.0`), plus seven nested submodules.
+3 modules on `integrations/github`, plus seven nested submodules.
 
 ## Modules
 
@@ -75,13 +75,26 @@ set its toggle to `false` — don't just delete the block and expect enforcement
 verified actions are permitted alongside your explicit `patterns_allowed` list. Validation on the
 module catches the mismatched combinations before the API does.
 
-## Known issue: new empty repositories
+## New repositories and the default branch
 
 `github-res-repository` sets the default branch with `github_branch_default`, which requires the
-branch to exist. The module does not create an initial commit, so **creating a brand-new empty
-repository fails** at that step.
+branch to exist. The module hardcodes `auto_init` so creation produces an initial commit and that
+branch is there to point at.
 
-Adding `auto_init` would fix it, but may force repository replacement — which is why it is
-[deliberately deferred](../contributing.md#known-deferred-work). Today the module works against
-repositories that already have a commit. For a new repository, create it with an initial commit first,
-then bring it under management.
+`auto_init` is create-only at the GitHub API — `PATCH /repos/{owner}/{repo}` discards it — so it is
+also in `ignore_changes`. Adopting an existing repository therefore produces no diff at all, and no
+full-object PATCH is issued for a field the API ignores.
+
+Two things to know before creating a repository:
+
+- **A new repository is not empty.** `auto_init` produces a `README.md` commit, so a first push from
+  a locally initialised repository is a non-fast-forward. Clone rather than push, or reconcile.
+- **`default_branch` must match the owner's default branch name.** `auto_init` creates the branch
+  named by the organization's *Repository default branch name* setting — usually `main`. Setting
+  `default_branch` to anything else on a brand-new repository still fails at `github_branch_default`,
+  because `auto_init` did not create that branch. Either align the org setting first, or create with
+  the org default and change it afterwards. The setting is not exposed by any resource in
+  `integrations/github`, so it cannot be managed here.
+
+`github_branch_default` can also lose a race against GitHub's own eventual consistency on the very
+first apply, when the initial commit is not yet queryable. Re-applying clears it.

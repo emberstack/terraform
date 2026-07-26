@@ -58,8 +58,8 @@ module — see [Usage](usage.md#providers-are-the-callers-responsibility).
 
 Three optional additions sit alongside them:
 
-- **`README.md`** — usage, Inputs, Outputs, Requirements, Notes. Coverage is currently 16 of 63
-  modules, so don't assume one exists.
+- **`README.md`** — usage, Inputs, Outputs, Notes. Most modules do not have one
+  yet, so don't assume one exists.
 - **`examples/basic/`** — sources the parent with `source = "../../"` and *does* declare a `provider`
   block. Only `entra-ptn-group-collection` has one today; treat examples as encouraged rather than
   established.
@@ -74,9 +74,6 @@ when the two are owned by different configurations.
 Submodule paths are addressable by git ref exactly like top-level modules. **A submodule with no
 in-repo caller is not dead code** — external consumers reach it directly. Never delete or re-address
 one based on in-repo reference count.
-
-There is one layout exception: `fortios-ptn-fortigate-switchcontroller-managedswitch-ports` puts its
-child at `port/` rather than `modules/port/`. Match `modules/<child>/` in new code.
 
 ## Variable style
 
@@ -108,7 +105,7 @@ Two things to watch:
 
 - **Tautologies never fire.** `condition = alltrue([for v in values(x) : v.scope != null || true])` is
   always true. If a check needs a second variable, reference it directly — cross-variable validation
-  has been legal since Terraform 1.9 and every module here pins `>= 1.15`.
+  is legal at the `required_version` every module declares.
 - **Don't validate enums you cannot verify.** The `fortios` provider does not publish its accepted
   values in the schema for many attributes. A guessed `contains(...)` list rejects working
   configurations. Validate what you can prove.
@@ -150,7 +147,7 @@ around, an ordering dependency invisible in the graph.
 # =============================================================================
 ```
 
-A banner is **not** a mandatory file header — 35 of 74 module `main.tf` files carry one. Add a banner
+A banner is **not** a mandatory file header; roughly half the module `main.tf` files carry one. Add a banner
 when you have something non-obvious to say. A title-only rule is fine as a section marker in a long
 multi-resource file; what makes a banner noise is a body that restates the resource type.
 

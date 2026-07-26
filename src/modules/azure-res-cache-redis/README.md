@@ -18,7 +18,7 @@ The module does **not** create the parent resource group — pass an existing on
 
 ```hcl
 module "redis" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-cache-redis?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-cache-redis?ref=vX.Y.Z"
 
   name      = "my-redis-cluster"
   location  = "westeurope"
@@ -103,68 +103,10 @@ module "redis" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `name` | `string` | 1–63 chars, alphanumeric + hyphens. |
-| `location` | `string` | Azure region. |
-| `parent_id` | `string` | ARM resource ID of the parent resource group. |
-| `sku_name` | `string` | E.g. `Balanced_B0`, `MemoryOptimized_M10`, `Enterprise_E5`. |
-
-### Optional — AVM-style standard interfaces
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `tags` | `map(string)` | `null` | Cluster tags. |
-| `lock` | `object({kind, name})` | `null` | Resource lock. `kind`: `CanNotDelete` or `ReadOnly`. |
-| `managed_identities` | `object({system_assigned, user_assigned_resource_ids})` | both empty | Managed identities to attach. |
-| `customer_managed_key_encryption` | `object({key_encryption_key_url, identity_type, user_assigned_identity_resource_id})` | `null` | CMK encryption (UAI required). |
-| `role_assignments` | `map(object({...}))` | `{}` | Role assignments scoped to the cluster. |
-| `private_endpoints` | `map(object({...}))` | `{}` | Private endpoints (with optional per-PE locks, role assignments, ASG associations, IP configs). |
-| `private_endpoints_manage_dns_zone_group` | `bool` | `true` | Set to false to manage zone groups externally. |
-| `diagnostic_settings` | `map(object({...}))` | `{}` | Cluster-level diagnostic settings. |
-
-### Optional — cluster
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `high_availability` | `string` | `"Enabled"` | `Enabled` or `Disabled`. |
-| `public_network_access` | `string` | `"Disabled"` | `Enabled` or `Disabled`. |
-
-### Optional — database
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `clustering_policy` | `string` | `"EnterpriseCluster"` | `EnterpriseCluster`, `OSSCluster`, or `NoCluster`. **Immutable after creation.** |
-| `eviction_policy` | `string` | `"AllKeysLRU"` | `AllKeysLRU`, `AllKeysRandom`, `VolatileLRU`, `VolatileRandom`, `VolatileTTL`, `NoEviction`. |
-| `enable_non_ssl_port` | `bool` | `false` | Enables Plaintext client protocol when true. |
-| `access_keys_authentication_enabled` | `bool` | `false` | Legacy access-keys auth. **Not exposed by upstream AVM.** |
-| `persistence_append_only_file_backup_frequency` | `string` | `null` | E.g. `1s`, `always`. **Not exposed by upstream AVM.** |
-| `persistence_redis_database_backup_frequency` | `string` | `null` | E.g. `1h`, `6h`, `12h`. **Not exposed by upstream AVM.** |
-| `geo_replication_group_name` | `string` | `null` | Active-Active geo-replication group. |
-| `redis_modules` | `list(object({name, args}))` | `[]` | RediSearch / RedisJSON / RedisBloom / RedisTimeSeries. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Cluster ARM resource ID. |
-| `name` | Cluster name. |
-| `hostname` | FQDN. |
-| `system_assigned_mi_principal_id` | Principal ID of the system-assigned identity (when enabled). |
-| `default_database` | `{ id, port }`. |
-| `private_endpoints` | Map of PE details. |
-| `diagnostic_settings` | Map of diag-setting details. |
-| `role_assignments` | Map of cluster-scoped role-assignment details. |
-| `resource` | Full `azurerm_managed_redis` resource. Sensitive. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes vs. the upstream AVM module
 

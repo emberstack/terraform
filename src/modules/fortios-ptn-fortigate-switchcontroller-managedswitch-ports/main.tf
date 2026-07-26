@@ -2,7 +2,7 @@
 # the single restful_resource so the per-port REST wiring lives in one place
 # and this parent stays a dead-simple map dispatcher.
 module "port" {
-  source   = "./port"
+  source   = "./modules/port"
   for_each = var.ports
 
   switch_id            = var.switch_id

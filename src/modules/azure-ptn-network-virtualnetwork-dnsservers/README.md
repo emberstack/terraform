@@ -25,7 +25,7 @@ The `azurerm_virtual_network_dns_servers` Terraform resource type is purpose-bui
 
 ```hcl
 module "hub_vnet_dns_servers" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-network-virtualnetwork-dnsservers?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-network-virtualnetwork-dnsservers?ref=vX.Y.Z"
 
   virtual_network_resource_id = module.hub_vnet.resource_id
   dns_servers                 = [module.hub_firewall.private_ip_address]
@@ -56,25 +56,13 @@ module "vnet_dns_servers" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Description |
-|---|---|---|
-| `virtual_network_resource_id` | `string` | **Required.** ARM resource ID of the existing virtual network. |
-| `dns_servers` | `list(string)` | **Required.** List of DNS server IP addresses. Empty list reverts to Azure-provided DNS. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Resource ID of the DNS-servers assignment (equals the parent vnet's ID). |
-| `dns_servers` | The DNS servers assigned to the virtual network. |
-| `virtual_network_resource_id` | Resource ID of the virtual network whose DNS servers are managed. |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
 - The deploying principal must have `Microsoft.Network/virtualNetworks/write` on the target vnet (typically `Network Contributor`).
 
 ## Notes

@@ -1,6 +1,6 @@
 # Entra ID
 
-4 modules on `hashicorp/azuread` (`>= 3.9, < 4.0`), plus two nested submodules.
+4 modules on `hashicorp/azuread`, plus two nested submodules.
 
 ## Modules
 

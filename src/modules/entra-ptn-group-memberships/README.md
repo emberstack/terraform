@@ -14,7 +14,7 @@ For the simpler "members of group X" pattern, prefer [`entra-res-group/modules/m
 
 ```hcl
 module "gha_memberships" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-ptn-group-memberships?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-ptn-group-memberships?ref=vX.Y.Z"
 
   group_memberships = {
     gha_in_operators = {
@@ -40,17 +40,10 @@ module "gha_memberships" {
 
 UPN-based entries require the deploying principal to have at least `User.Read.All` Graph permission.
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `group_memberships` | `map(object)` | `{}` | Map of `<stable-key> => { group_object_id, member }`. `group_object_id` must be a UUID. `member` is UUID or UPN. |
-
-## Outputs
-
-| Name | Type | Description |
-|---|---|---|
-| `group_memberships` | `map(object)` | Map of `azuread_group_member` resources, keyed by the input map key. Each entry exposes `id`, `group_object_id`, `member_object_id`. |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Related modules
 
@@ -59,7 +52,5 @@ UPN-based entries require the deploying principal to have at least `User.Read.Al
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azuread` `>= 3.9, < 4.0`
 
 The provider must be authenticated as a principal with permission to write group membership for the target groups (typically the group's owner, or **Groups Administrator**).

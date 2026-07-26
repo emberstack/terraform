@@ -12,7 +12,7 @@ There is no AVM resource module for `roleDefinitions` (only for role *assignment
 
 ```hcl
 module "platform_roles" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-authorization-roledefinition-collection?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-authorization-roledefinition-collection?ref=vX.Y.Z"
 
   scope = data.azurerm_management_group.tenant_root.id
 
@@ -83,37 +83,10 @@ resource "azurerm_role_assignment" "ddos_join" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `scope` | `string` | `null` | Default anchor scope for every entry. Required unless each entry sets its own. |
-| `role_definitions` | `map(object)` | — | Map of role specs keyed by stable identifier. See variables.tf for the per-entry shape. |
-
-Per-entry shape (object):
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `name` | `string` | — | Display name. |
-| `description` | `string` | `null` | Long-form description. |
-| `actions` | `set(string)` | `[]` | Control-plane operations granted. |
-| `not_actions` | `set(string)` | `[]` | Operations subtracted from `actions`. |
-| `data_actions` | `set(string)` | `[]` | Data-plane operations granted. |
-| `not_data_actions` | `set(string)` | `[]` | Operations subtracted from `data_actions`. |
-| `assignable_scopes` | `set(string)` | `[]` (== `[scope]`) | Scopes at which the role can be assigned. |
-| `scope` | `string` | `null` | Per-entry anchor scope override (falls back to module-level `scope`). |
-| `role_definition_id` | `string` | `null` | Fixed GUID (auto-generated when omitted). |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `role_definitions` | Map keyed by input key. Each value is `{ resource_id, role_definition_id, name, scope }`. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes
 

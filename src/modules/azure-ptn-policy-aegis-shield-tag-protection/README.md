@@ -40,7 +40,7 @@ Two policy definitions, bundled into one initiative, applied via one assignment:
 
 ```hcl
 module "aegis" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-policy-aegis-shield-tag-protection?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-policy-aegis-shield-tag-protection?ref=vX.Y.Z"
 
   scope = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
 }
@@ -101,52 +101,10 @@ module "exempt_legacy_workload" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `scope` | `string` | ARM ID where the assignment lands. |
-
-### Optional — behaviour
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `effect` | `string` | `"DenyAction"` | `DenyAction` or `Disabled`. |
-| `enforce` | `bool` | `true` | Set to false for full dry-run. |
-| `not_scopes` | `list(string)` | `[]` | Sub-scopes to exclude. |
-| `non_compliance_message` | `string` | sensible default | Message shown on deny. |
-
-### Optional — placement and labels
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `policy_management_group_id` | `string` | `null` | Publish definitions and initiative at a management group instead of the assignment's subscription. |
-| `policy_metadata` | `any` | `{}` | Extra metadata merged on top of `category = "Governance"`, `version = "1.0.0"`. |
-| `initiative_name` | `string` | `null` | Override the initiative name. Defaults to `aegis`. |
-| `initiative_display_name` | `string` | `null` | Override the initiative display name. |
-| `initiative_description` | `string` | `null` | Override the initiative description. |
-| `assignment_name` | `string` | `null` | Override the assignment name. Defaults to `aegis`. |
-| `assignment_display_name` | `string` | `null` | Override the assignment display name. |
-| `assignment_description` | `string` | `null` | Override the assignment description. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_policy_definition_id` | ARM ID of the Indexed-mode resource policy. |
-| `resource_group_policy_definition_id` | ARM ID of the All-mode resource-group policy. |
-| `initiative_id` | ARM ID of the initiative bundling both. |
-| `initiative_name` | Name of the initiative. |
-| `assignment_id` | ARM ID of the assignment. |
-| `assignment_name` | Name of the assignment. |
-| `scope_kind` | Detected scope kind. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes
 

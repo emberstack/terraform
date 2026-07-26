@@ -17,7 +17,7 @@ resource "azuread_directory_role" "user_administrator" {
 }
 
 module "iam_glb" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit?ref=vX.Y.Z"
 
   display_name              = "IAM-GLB"
   description               = "Global IAM administrative unit"
@@ -42,7 +42,7 @@ module "iam_glb" {
 
 ```hcl
 module "iam_glb_members" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit/modules/member?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-administrativeunit/modules/member?ref=vX.Y.Z"
 
   administrative_unit_object_id = "existing-au-object-id"
   members = {
@@ -51,26 +51,10 @@ module "iam_glb_members" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `display_name` | `string` | — | **Required.** 1–256 characters. |
-| `description` | `string` | `null` | Up to 1024 characters. |
-| `hidden_membership_enabled` | `bool` | `false` | Whether members are hidden from non-members. |
-| `prevent_duplicate_names` | `bool` | `false` | When `true`, creation fails if an AU with the same `display_name` already exists. Create-time check only. |
-| `members` | `map(string)` | `{}` | Map of `<stable-key> => <member-object-id>`. Object IDs must be valid Entra UUIDs. |
-| `role_assignments` | `map(object)` | `{}` | Map of AU-scoped Entra directory role assignments. Each entry has `role_id` (object id of an activated directory role) and `principal`. |
-
-## Outputs
-
-| Name | Type | Description |
-|---|---|---|
-| `id` | `string` | Resource ID of the administrative unit (equals `object_id`). |
-| `object_id` | `string` | Entra object ID of the administrative unit. |
-| `display_name` | `string` | Display name of the administrative unit. |
-| `members` | `map(object)` | Map of `azuread_administrative_unit_member` resources, keyed by the input map key. |
-| `role_assignments` | `map(object)` | Map of `azuread_directory_role_assignment` resources, keyed by the input map key. |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Submodules
 
@@ -78,8 +62,6 @@ module "iam_glb_members" {
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azuread` `>= 3.9, < 4.0`
 
 The provider must be authenticated with permissions sufficient for the operations requested:
 

@@ -12,7 +12,7 @@ There is no AVM module for `policyExemptions`, and the AzureRM provider has four
 
 ```hcl
 module "compliance_exemptions" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-policy-exemption-collection?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-policy-exemption-collection?ref=vX.Y.Z"
 
   exemptions = {
     storage-vnet-se-gdpr = {
@@ -80,31 +80,10 @@ module "compliance_exemptions" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Description |
-|---|---|---|
-| `exemptions` | `map(object)` | Map of exemptions, keyed by stable name. See variables.tf for the full per-entry shape. |
-
-Each entry's `scope` may target any of:
-
-- Management group: `/providers/Microsoft.Management/managementGroups/<mg>`
-- Subscription:     `/subscriptions/<sub>`
-- Resource group:   `/subscriptions/<sub>/resourceGroups/<rg>`
-- Resource:         `/subscriptions/<sub>/resourceGroups/<rg>/providers/<...>`
-
-The underlying resource module dispatches to the correct `azurerm_<scope>_policy_exemption` resource per entry.
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `exemptions` | Map keyed by input key. Each value is `{ resource_id, name, scope_kind }`. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes
 

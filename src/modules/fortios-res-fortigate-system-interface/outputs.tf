@@ -56,10 +56,11 @@ output "actual_network" {
     - `ipv4_usable_range`  — `first-last` usable hosts
     - `ipv4_range`         — `network-broadcast`, i.e. the full range including edges
 
-    ⚠️ On a `/32` (loopbacks) the usable-host maths would underflow, so the
-    count is reported as `1` and every host value collapses to the single
-    address. `/31` is deliberately left doing the normal maths — changing it
-    would alter values callers already consume.
+    ⚠️ Two prefixes are special-cased. On a `/32` (loopbacks) the usable-host
+    maths would underflow, so the count is reported as `1` and every host value
+    collapses to the single address. On a `/31` (point-to-point, RFC 3021)
+    there is no network or broadcast address, so the count is `2` and both
+    addresses are usable — `ipv4_range` therefore matches `ipv4_usable_range`.
   EOT
   value = {
     ipv4_address       = local._actual_ip

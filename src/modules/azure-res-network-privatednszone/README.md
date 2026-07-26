@@ -14,7 +14,7 @@ This module mirrors AVM's input shape (`name`, `resource_group_name`, `tags`, `r
 
 ```hcl
 module "vault_pl_zone" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone?ref=vX.Y.Z"
 
   name                = "privatelink.vaultcore.azure.net"
   resource_group_name = "global-dns-privatelink"
@@ -34,7 +34,7 @@ module "vault_pl_zone" {
 
 ```hcl
 module "internal_zone" {
-  source = "...//src/modules/azure-res-network-privatednszone?ref=v0.1.0"
+  source = "...//src/modules/azure-res-network-privatednszone?ref=vX.Y.Z"
 
   name                = "internal.acme.example"
   resource_group_name = "platform-dns"
@@ -42,7 +42,7 @@ module "internal_zone" {
 }
 
 module "internal_zone_records" {
-  source = "...//src/modules/azure-ptn-network-privatednszone-records?ref=v0.1.0"
+  source = "...//src/modules/azure-ptn-network-privatednszone-records?ref=vX.Y.Z"
 
   private_dns_zone_resource_id = module.internal_zone.resource_id
   tags                         = local.tags
@@ -58,7 +58,7 @@ module "internal_zone_records" {
 }
 
 module "internal_zone_vnet_links" {
-  source = "...//src/modules/azure-ptn-network-privatednszone-vnet-links?ref=v0.1.0"
+  source = "...//src/modules/azure-ptn-network-privatednszone-vnet-links?ref=vX.Y.Z"
 
   tags = local.tags
 
@@ -77,7 +77,7 @@ module "internal_zone_vnet_links" {
 
 ```hcl
 module "privatelink_links" {
-  source = "...//src/modules/azure-ptn-network-privatednszone-vnet-links?ref=v0.1.0"
+  source = "...//src/modules/azure-ptn-network-privatednszone-vnet-links?ref=vX.Y.Z"
 
   private_dns_zone_vnet_links = {
     for pair in flatten([
@@ -95,24 +95,10 @@ module "privatelink_links" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `name` | `string` | — | **Required.** Fully-qualified zone name (e.g., `privatelink.vaultcore.azure.net`, `internal.example.com`). |
-| `resource_group_name` | `string` | — | **Required.** Existing RG (the module does not create it). |
-| `tags` | `map(string)` | `{}` | Applied to the zone. |
-| `soa_record` | `object` | `null` | SOA overrides. `email` is required when set. |
-| `role_assignments` | `map(object)` | `{}` | Zone-scope role assignments. AVM-shape interface block. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Resource ID of the private DNS zone. |
-| `name` | Zone name. |
-| `resource_group_name` | RG name (echo of input). |
-| `role_assignments` | Map of created role assignments (`id`, `principal_id`). |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Submodules
 
@@ -136,7 +122,7 @@ Per-link units cost more directories but give each link its own dependency edges
 ```hcl
 # one link, one unit
 module "link" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone/modules/vnet-link?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-network-privatednszone/modules/vnet-link?ref=vX.Y.Z"
 
   name                         = "hub"
   private_dns_zone_resource_id = module.zone.resource_id
@@ -154,8 +140,6 @@ Both pattern modules can be used standalone against any existing zone (this modu
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
 - The deploying principal must have:
   - `Private DNS Zone Contributor` (or equivalent) on the resource group hosting the zone.
   - `Role Based Access Control Administrator` (or equivalent) on the zone, when `role_assignments` is set.

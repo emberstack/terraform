@@ -55,6 +55,12 @@ output "actual_network" {
     - `ipv4_usable_range` — first-last usable hosts, hyphen separated
     - `ipv4_range` — network-broadcast, hyphen separated
 
+    ⚠️ Two prefixes are special-cased. On a `/32` (loopbacks) the usable-host
+    maths would underflow, so the count is reported as `1` and every host value
+    collapses to the single address. On a `/31` (point-to-point, RFC 3021)
+    there is no network or broadcast address, so the count is `2` and both
+    addresses are usable — `ipv4_range` therefore matches `ipv4_usable_range`.
+
     Feed these into DHCP pools, firewall address objects, and route targets
     instead of recomputing CIDR math at the call site.
   EOT

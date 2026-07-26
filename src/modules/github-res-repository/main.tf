@@ -7,12 +7,20 @@
 #
 # `has_downloads` is ignored — GitHub still returns a value for this retired
 # feature, which otherwise produces a permanent diff.
+#
+# `auto_init` is hardcoded so a brand-new repository gets an initial commit and
+# `github_branch_default` has a branch to point at. GitHub accepts it only on
+# create, so it is also ignored: without that, adopting an existing repository
+# would diff `false -> true` and issue a full-object PATCH against a live repo
+# for a field the API discards.
 # =============================================================================
 
 resource "github_repository" "this" {
   name        = var.name
   description = var.description
   visibility  = var.visibility
+
+  auto_init = true
 
   has_issues   = var.has_issues
   has_projects = var.has_projects
@@ -32,7 +40,7 @@ resource "github_repository" "this" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [has_downloads]
+    ignore_changes  = [has_downloads, auto_init]
   }
 }
 

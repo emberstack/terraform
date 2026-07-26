@@ -12,7 +12,7 @@ Owners are managed inline on the group resource: groups must always have at leas
 
 ```hcl
 module "ops_group" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-group?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-group?ref=vX.Y.Z"
 
   display_name = "ops-engineers"
   description  = "Operations engineers"
@@ -97,7 +97,7 @@ module "all_engineers" {
 
 ```hcl
 module "ops_group_members" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-group/modules/member?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/entra-res-group/modules/member?ref=vX.Y.Z"
 
   group_object_id = "existing-group-object-id"
   members = {
@@ -107,34 +107,10 @@ module "ops_group_members" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `display_name` | `string` | — | **Required.** 1–256 characters. |
-| `description` | `string` | `null` | Up to 1024 characters. |
-| `mail_enabled` | `bool` | `false` | At least one of `mail_enabled` or `security_enabled` must be `true`. |
-| `security_enabled` | `bool` | `true` | At least one of `mail_enabled` or `security_enabled` must be `true`. |
-| `mail_nickname` | `string` | `null` | Required when `mail_enabled = true` or `types` includes `"Unified"`. |
-| `assignable_to_role` | `bool` | `false` | When `true`, the group is eligible to receive Entra directory roles. **Immutable after creation.** |
-| `prevent_duplicate_names` | `bool` | `false` | Create-time check only. |
-| `visibility` | `string` | `null` | One of `Private`, `Public`, `HiddenMembership`. |
-| `types` | `set(string)` | `[]` | Use `["Unified"]` for M365 groups. |
-| `behaviors` | `set(string)` | `[]` | e.g. `AllowOnlyMembersToPost`, `HideGroupInOutlook`. |
-| `administrative_unit_ids` | `list(string)` | `[]` | AUs the group should belong to (atomic placement at creation). |
-| `dynamic_membership` | `object({enabled, rule})` | `null` | When set, `members` must be empty. |
-| `owners` | `map(string)` | — | **Required, ≥1 entry.** Map of `<stable-key> => <owner-object-id>`. |
-| `members` | `map(string)` | `{}` | Map of `<stable-key> => <member-object-id>`. |
-
-## Outputs
-
-| Name | Type | Description |
-|---|---|---|
-| `object_id` | `string` | Entra object ID. Use as `principal_object_id` when assigning roles. |
-| `display_name` | `string` | Display name. |
-| `mail` | `string` | Email address (if `mail_enabled`). |
-| `mail_nickname` | `string` | Mail alias. |
-| `members` | `map(object)` | Map of `azuread_group_member` resources, keyed by the input map key. |
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Submodules
 
@@ -146,8 +122,6 @@ module "ops_group_members" {
 
 ## Requirements
 
-- Terraform `>= 1.15`
-- `hashicorp/azuread` `>= 3.9, < 4.0`
 
 The provider must be authenticated as a principal with permissions to create groups (typically **Groups Administrator** or **Privileged Role Administrator** for role-assignable groups).
 

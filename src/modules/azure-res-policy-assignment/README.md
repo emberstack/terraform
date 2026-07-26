@@ -18,7 +18,7 @@ Highlights:
 
 ```hcl
 module "audit_unmanaged_disks" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-assignment?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-assignment?ref=vX.Y.Z"
 
   name                 = "audit-unmanaged-disks"
   display_name         = "Audit unmanaged disks"
@@ -89,57 +89,10 @@ module "deny_public_blob" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `name` | `string` | Assignment name. |
-| `scope` | `string` | ARM ID of the assignment scope (management group, subscription, resource group, or resource). |
-| `policy_definition_id` | `string` | ARM ID of the policy definition or initiative. |
-
-### Optional — display
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `display_name` | `string` | `null` | Portal display name. |
-| `description` | `string` | `null` | Long-form description. |
-
-### Optional — behavior
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `enforce` | `bool` | `true` | When false, runs in audit-only mode. |
-| `not_scopes` | `list(string)` | `[]` | Sub-scopes to exclude. |
-| `parameters` | `any` | `{}` | Parameter values, as HCL. |
-| `metadata` | `any` | `{}` | Assignment metadata, as HCL. |
-| `non_compliance_messages` | `list(object)` | `[]` | Optional non-compliance messages. |
-| `overrides` | `list(object)` | `[]` | Effect overrides. |
-| `resource_selectors` | `map(list(object))` | `{}` | Resource selectors keyed by selector name. |
-
-### Optional — identity
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `location` | `string` | `null` | Required when `system_assigned = true`. |
-| `managed_identities` | `object({system_assigned, user_assigned_resource_ids})` | both empty | MI configuration. |
-| `identity_role_assignments` | `map(object)` | `{}` | Roles granted to the system-assigned identity. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Assignment ARM resource ID. |
-| `name` | Assignment name. |
-| `scope_kind` | Detected scope kind. |
-| `system_assigned_mi_principal_id` | Principal ID of the SA identity (if any). |
-| `identity_role_assignments` | Map of role-assignment details keyed by input key. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes
 

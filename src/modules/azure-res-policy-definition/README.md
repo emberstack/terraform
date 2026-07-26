@@ -18,7 +18,7 @@ This module:
 
 ```hcl
 module "deny_unmanaged_disks" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-definition?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-definition?ref=vX.Y.Z"
 
   name         = "deny-unmanaged-disks"
   display_name = "Deny unmanaged disks"
@@ -69,36 +69,7 @@ module "tag_required" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `name` | `string` | Definition name (1–64). |
-| `display_name` | `string` | Portal display name. |
-| `policy_rule` | `any` (HCL object) | Policy rule. The module `jsonencode`s it. |
-
-### Optional
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `description` | `string` | `null` | Long-form description. |
-| `mode` | `string` | `"All"` | `All`, `Indexed`, or one of the `Microsoft.*.Data` resource-provider modes. |
-| `management_group_id` | `string` | `null` | Management group to scope to. `null` = subscription scope. |
-| `parameters` | `any` | `{}` | Parameter declarations. |
-| `metadata` | `any` | `{}` | Metadata (e.g. `category`, `version`). |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Definition ARM resource ID. |
-| `name` | Definition name. |
-| `display_name` | Definition display name. |
-| `resource` | Full `azurerm_policy_definition` resource. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.

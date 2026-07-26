@@ -61,17 +61,16 @@ resource "fortios_system_settings" "this" {
   gui_object_colors    = var.system_settings.gui_object_colors
 }
 
+# `ntpserver` and `interface` are both ignored, and neither is exposed as an
+# input. `fortios_system_ntp` is a whole-object resource: with no `interface`
+# blocks rendered it would send an empty list and strip every listener off the
+# device. The ignore is load-bearing rather than cosmetic — it is what lets
+# `fortios-ptn-fortigate-system-ntp-interface` own listeners incrementally over
+# REST while this module owns only the scalar NTP settings.
 resource "fortios_system_ntp" "this" {
   ntpsync      = var.ntp.ntpsync
   server_mode  = var.ntp.server_mode
   syncinterval = var.ntp.syncinterval
-
-  dynamic "interface" {
-    for_each = var.ntp.interfaces
-    content {
-      interface_name = interface.value
-    }
-  }
 
   lifecycle {
     ignore_changes = [ntpserver, interface]

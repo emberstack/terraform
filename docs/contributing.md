@@ -189,9 +189,9 @@ If the sweep ever resolves zero directories it fails rather than reporting a gre
 
 ### Why there is no `actions/cache`
 
-`build` sets `TF_PLUGIN_CACHE_DIR` so all 75 `init` runs share one provider directory. That part is
-not optional — without it Terraform downloads a private copy of every provider per module, which runs
-to gigabytes and a dozen copies of azurerm.
+`build` sets `TF_PLUGIN_CACHE_DIR` so every `init` shares one provider directory. That part is not
+optional — without it Terraform downloads a private copy of every provider per module, which runs to
+gigabytes and a dozen copies of azurerm.
 
 Persisting that directory between runs with `actions/cache` is a different question, and the answer
 is no. `TF_PLUGIN_CACHE_DIR` never evicts: on each provider bump the restore-key pulls the previous
@@ -257,8 +257,8 @@ terraform validate
 
 ### Sweep the whole tree
 
-The same 75 directories CI covers — the 74 module directories plus the one `examples/basic`.
-**Set a plugin cache first** or you will download the same providers 75 times:
+The same directories CI covers — every module directory plus `examples/basic`.
+**Set a plugin cache first** or you will download the same providers once per directory:
 
 ```bash
 export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
@@ -288,7 +288,7 @@ Re-run with `terraform init -upgrade`. This is a local artefact, never a reposit
    sibling in `src/modules/`. FortiGate modules need the `fortigate` platform segment.
 2. **Create all four files** — `main.tf`, `variables.tf`, `outputs.tf`, `versions.tf` — even if one is
    short. Never fold them together.
-3. **Pin versions** in `versions.tf`: `required_version = ">= 1.15"` and a provider constraint with
+3. **Pin versions** in `versions.tf`: `required_version` matching the rest of the tree, and a provider constraint with
    both a floor and an upper bound below the next major.
 4. **Describe every variable and output.** The tree is at 100% description coverage; keep it there.
 5. **Validate inputs** — length bounds, enums, regex — to the azure/entra standard, except where the
@@ -302,8 +302,8 @@ Re-run with `terraform init -upgrade`. This is a local artefact, never a reposit
 8. `terraform fmt`, `init -backend=false`, `validate`, and
    [`check-docs.py`](#consistency-checks) — the last one is what verifies steps 2, 4 and 7.
 
-A `README.md` and an `examples/basic/` are welcome but not required — coverage is 16 of 63 and 1 of 63
-respectively, so a new module without them is not an outlier.
+A `README.md` and an `examples/basic/` are welcome but not required — most modules have neither,
+so a new module without them is not an outlier.
 
 Where a parent gains a submodule, add a **Submodules** section to the parent's README if it has one.
 
@@ -325,24 +325,6 @@ short-lived branches — `feat/…`, `fix/…` — and open a pull request again
 triggers are scoped to `main`, so a branch builds once a pull request is open against it and never
 before. Nothing but `main` publishes, and the version `discovery` reports on a pull request is the
 plain `X.Y.Z` that merging would release — there are no prerelease versions in this repository.
-
-## Known deferred work
-
-These were reviewed and consciously postponed because the fix is riskier than the defect. They are
-**revisit, not won't-fix** — each needs to land behind a version tag with consumer coordination.
-Don't fix them in passing.
-
-| Item | Why deferred | Cost while deferred |
-|---|---|---|
-| `management_group_id` on `azurerm_policy_set_definition` | Migrating to `azurerm_management_group_policy_set_definition` changes the resource address — destroys and recreates live policy set definitions, and any assignment referencing them, without `moved` blocks | **The `< 5.0` azurerm cap is load-bearing.** azurerm v5 is unreachable until this lands. Deprecation warning on every plan. |
-| `auto_init` on `github-res-repository` | Adding it may force repository replacement | The module only works against repositories that already have a commit — creating a brand-new empty repository fails at `github_branch_default` |
-| `triggers_replace` on the `vap-nac` NAC binding | Re-binds live VAPs on next apply | Binding changes are not re-applied automatically |
-| `ntp.interfaces` inside `ignore_changes` (`fortios-ptn-fortigate-system-settings`) | Ownership question against the sibling NTP module | Two modules can each believe they own NTP interface assignment |
-| `/31` semantics in `fortios-utl-network-cidr` | Changes a value callers already consume | A `/31` reports `0` usable hosts and an inverted usable range |
-
-Two open structural items, both cosmetic and both breaking to fix: the submodule at `port/` instead of
-`modules/port/`, and `fortios-res-fortigate-wirelesscontroller-settings` being plural where the
-underlying resource is `fortios_wirelesscontroller_setting`.
 
 ## Releases
 
@@ -450,13 +432,6 @@ The manual trigger takes no inputs on purpose. It re-runs the pipeline against t
 selected branch, derives the version the same way a push would, and the existing-tag check makes a
 dispatch against an already-released commit a no-op rather than a duplicate.
 
-## Outstanding repository work
-
-- **README coverage is 16 of 63 modules**; `examples/` coverage is 1 of 63.
-- **Validation coverage is uneven** — heavy in azure/entra, sparse in fortios.
-- Workflow actions are pinned to version tags rather than commit SHAs. This is a settled choice, not
-  a gap — see [how actions are pinned](#how-actions-are-pinned) for the trade being made.
-
 ## Dependency updates
 
 Renovate runs from this repository —
@@ -474,16 +449,15 @@ to the pinned action for the length of one step rather than left sitting on the 
 | Branches | `chore/renovate/…`, commits prefixed `chore(deps):` |
 
 **Provider constraint bumps are not automated.** A floor in `versions.tf` is a compatibility promise
-to consumers, not a number to keep current — raising `>= 4.81` forces every consumer to upgrade.
+to consumers, not a number to keep current — raising a floor forces every consumer to upgrade.
 With `rangeStrategy: in-range-only` Renovate never rewrites a declared range, so no provider pull
 request opens and nothing waits on the dashboard either.
 
-That covers `hashicorp/azurerm` majors too. The [`< 5.0` cap](#known-deferred-work) in `versions.tf`
-is unchanged and still load-bearing, and moving to v5 is a deliberate manual edit: doing the
-`management_group_id` migration on `azure-res-policy-set-definition` first, with `moved` blocks, as
-a marked breaking change.
+That covers `hashicorp/azurerm` majors too. The azurerm major cap in `versions.tf` is unchanged, and moving
+to v5 stays a deliberate manual edit — the `management_group_id` migration that used to block it is
+done, but the remaining azurerm modules have not been checked against v5.
 
-**Terraform itself is tracked in two places, differently.** The `required_version = ">= 1.15"` in every
+**Terraform itself is tracked in two places, differently.** The `required_version` in every
 `versions.tf` is picked up by the built-in `terraform` manager, so the same rule leaves it alone.
 `TERRAFORM_VERSION` in `pipeline.yaml` is a plain YAML value that no built-in manager can see, so a
 `customManagers` regex matches it and resolves it against `hashicorp/terraform` releases.
@@ -559,11 +533,9 @@ commit all survive; the proof does not.
 
 ### How actions are pinned
 
-Every action is pinned to a **version tag, never a commit SHA**. Most sit on a major tag
-(`actions/checkout@v7`, `actions/stale@v10`, `dorny/paths-filter@v4`, `hashicorp/setup-terraform@v4`)
-and pick up patches silently. The rest pin an exact version — `gittools/actions@v4.7.0`,
-`renovatebot/github-action@v46.1.20`, `Mattraks/delete-workflow-runs@v2.1.0` — and get a Renovate pull
-request for each release instead.
+Every action is pinned to a **version tag, never a commit SHA**. Most sit on a major tag and pick up
+patches silently; the rest pin an exact version and get a Renovate pull request for each release
+instead. The workflows themselves are the list.
 
 Tags are mutable, so this is a deliberate trade: readable diffs and a legible upgrade history, against
 trusting each action's owner not to move a tag underneath us. It also means the `sha_pinning_required`

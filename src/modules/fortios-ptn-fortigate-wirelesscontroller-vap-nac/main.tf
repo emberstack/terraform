@@ -1,5 +1,13 @@
 locals {
   nac_profile_name = coalesce(var.nac_profile_name, var.name)
+
+  # Drives both `input` and `triggers_replace` on the binding below. They must
+  # stay identical: `triggers_replace` decides when the binding is re-applied,
+  # and the destroy provisioner reads the old values back off `self.input`.
+  nac_binding = {
+    vap_name    = fortios_wirelesscontroller_vap.this.name
+    nac_profile = fortios_wirelesscontroller_nacprofile.this.name
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -66,12 +74,11 @@ resource "fortios_wirelesscontroller_nacprofile" "this" {
 # -----------------------------------------------------------------------------
 
 resource "terraform_data" "nac_binding" {
-  # terraform_data auto-replaces whenever `input` changes, which re-fires the
-  # create-time provisioner. No explicit replace_triggered_by needed.
-  input = {
-    vap_name    = fortios_wirelesscontroller_vap.this.name
-    nac_profile = fortios_wirelesscontroller_nacprofile.this.name
-  }
+  # `input` does not force replacement — it updates in place, so the create-time
+  # provisioner never re-fires. Only `triggers_replace` replaces, which runs the
+  # destroy provisioner (unbind) then the create provisioner (rebind).
+  input            = local.nac_binding
+  triggers_replace = local.nac_binding
 
   provisioner "local-exec" {
     interpreter = ["pwsh", "-NoProfile", "-Command"]

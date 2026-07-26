@@ -69,20 +69,16 @@ These are the ones that cause real damage when ignored. Each links to the reason
    addressable by git ref, so external callers reach them directly.
    `azure-res-network-privatednszone/modules/vnet-link` reads as dead code and is not.
    ([why](docs/conventions.md#nested-submodules))
-3. **Do not fix the deferred items in passing.** They were reviewed and postponed because the fix is
-   riskier than the defect — resource-address changes, live-device writes, values callers already
-   consume. They need a version tag and consumer coordination.
-   ([the list](docs/contributing.md#known-deferred-work))
-4. **Keep consumer identifiers out.** Public repo: no customer names, real hostnames, switch or SSID
+3. **Keep consumer identifiers out.** Public repo: no customer names, real hostnames, switch or SSID
    names, domains, serials, directory object IDs, or downstream filesystem paths. Use `example.com`,
    `core-sw-01`, `corp-nac`, `rg-example`.
-5. **Never commit `.terraform.lock.hcl`.** Gitignored on purpose — lock files in reusable modules
+4. **Never commit `.terraform.lock.hcl`.** Gitignored on purpose — lock files in reusable modules
    cause cross-platform checksum mismatches. Consumers pin their own. Same for state and tfvars.
-6. **No `provider` blocks inside modules.** `required_providers` in `versions.tf`; the consumer
+5. **No `provider` blocks inside modules.** `required_providers` in `versions.tf`; the consumer
    configures and authenticates. (The one exception in the tree is under `examples/`.)
-7. **Every provider constraint keeps an upper bound below the next major.**
-   ([matrix](docs/usage.md#version-requirements))
-8. **`GitVersion.yaml` and `cliff.toml` diverge on purpose — keep the anchoring identical.**
+6. **Every provider constraint keeps an upper bound below the next major.**
+   ([why](docs/usage.md#version-requirements))
+7. **`GitVersion.yaml` and `cliff.toml` diverge on purpose — keep the anchoring identical.**
    `cliff.toml` flags all three breaking markers (`<type>!:`, a `BREAKING CHANGE:` footer,
    `+semver: major`) in the notes; GitVersion majors on the last one only. That gap is the design.
    What must not drift is the `(?m)` anchoring: a marker on a body line has to behave the same in
@@ -105,7 +101,7 @@ These are the ones that cause real damage when ignored. Each links to the reason
   ([why](docs/modules/fortios.md#perpetual-diffs-are-the-dominant-failure-mode))
 - **Tautological validation never fires.** `alltrue([for v in values(x) : v.scope != null || true])`
   is always true. Reference the second variable directly — cross-variable validation is legal and
-  every module pins `>= 1.15`. ([more](docs/conventions.md#validation))
+  `required_version` is high enough everywhere. ([more](docs/conventions.md#validation))
 - **Don't guess enum values you cannot verify.** The fortios provider does not publish accepted values
   for many attributes; a guessed `contains(...)` rejects working configurations.
 - **The Aegis tag contract is fixed.** Consumers key off the tag name and value. Read the banner in

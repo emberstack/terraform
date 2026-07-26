@@ -1,6 +1,6 @@
 # Azure
 
-17 modules on `hashicorp/azurerm` (`>= 4.81, < 5.0`), plus one nested submodule.
+17 modules on `hashicorp/azurerm`, plus one nested submodule.
 
 Input shapes mirror [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) where an
 AVM equivalent exists — `name`, `resource_group_name`, `tags`, `role_assignments` — and add what AVM
@@ -96,11 +96,36 @@ Choose between it and the collection pattern by ownership, not by count:
 Nothing in this repository sources `vnet-link`, and that means nothing — submodule paths are
 addressable by git ref, so external consumers reach it directly.
 
-## Known issues
+## Migrating a management-group-scoped initiative
 
-`azure-res-policy-set-definition` uses `management_group_id`, which azurerm v5.0 removes. This is why
-the provider constraint is capped below 5.0, and the migration is
-[deliberately deferred](../contributing.md#known-deferred-work) — it changes the resource address.
+`azure-res-policy-set-definition` picks its resource type from the scope: `management_group_id` set
+gives `azurerm_management_group_policy_set_definition`, null gives `azurerm_policy_set_definition`.
+The split exists because `management_group_id` on the latter is deprecated and removed in azurerm
+v5.0. Both types carry identical schemas, so no input or output changes shape.
 
-`azure-ptn-policy-aegis-shield-tag-protection` inherits the `management_group_id` deprecation
-through the `azure-res-policy-set-definition` module it calls.
+Changing scope type changes the Terraform address. The two types address the same ARM resource ID,
+but azurerm does not implement `MoveState` for the pair — a `moved` block fails with *"Move Resource
+State Not Supported"* — so the module deliberately ships none.
+
+**By default the initiative is destroyed and recreated**, along with every assignment referencing it.
+The resource itself comes back identical, but the assignment is **unenforced for the length of the
+apply**. For a deny-effect initiative that is a real gap: schedule it, and do not run it as a
+side effect of an unrelated change.
+
+If you cannot accept that gap, re-address the state instead. Because the ARM resource ID is
+unchanged, this is a state-only operation and the plan afterwards is empty. Take a state backup
+first, then:
+
+```bash
+terraform state rm 'module.<path>.azurerm_policy_set_definition.this'
+```
+
+```bash
+terraform import 'module.<path>.azurerm_management_group_policy_set_definition.management_group[0]' '/providers/Microsoft.Management/managementGroups/<mg>/providers/Microsoft.Authorization/policySetDefinitions/<name>'
+```
+
+Then plan. A correct migration reports **no changes** — nothing is created or destroyed in Azure.
+A plan that still shows a destroy means the import did not land; do not apply it.
+
+The azurerm major cap stays in place for now. This module no longer blocks it, but the other
+azurerm modules have not been checked against v5.

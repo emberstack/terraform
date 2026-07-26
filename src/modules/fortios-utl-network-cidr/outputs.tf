@@ -14,17 +14,17 @@ output "ipv4_prefix" {
 }
 
 output "ipv4_usable_count" {
-  description = "Number of usable host addresses. `1` for a /32 (the address itself), `0` for a /31."
+  description = "Number of usable host addresses. `1` for a /32 (the address itself), `2` for a /31 (RFC 3021 point-to-point — no network or broadcast address)."
   value       = local.host_count
 }
 
 output "ipv4_usable_first" {
-  description = "First usable host address. For a /32 this is the address itself."
+  description = "First usable host address. For a /32 this is the address itself; for a /31 it is the network address, which is usable under RFC 3021."
   value       = local.usable_first
 }
 
 output "ipv4_usable_last" {
-  description = "Last usable host address. For a /32 this is the address itself."
+  description = "Last usable host address. For a /32 this is the address itself; for a /31 it is the second of the two addresses."
   value       = local.usable_last
 }
 
@@ -34,6 +34,6 @@ output "ipv4_usable_range" {
 }
 
 output "ipv4_range" {
-  description = "Full network range as `network-broadcast`, inclusive of both."
+  description = "Full network range as `network-broadcast`, inclusive of both. A /31 has neither, so the range is the two addresses and matches `ipv4_usable_range`."
   value       = "${cidrhost(local.network_cidr, 0)}-${local.range_last}"
 }

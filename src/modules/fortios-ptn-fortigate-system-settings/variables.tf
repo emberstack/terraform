@@ -190,20 +190,23 @@ variable "ntp" {
     - `server_mode` — serve NTP to clients as well as consuming it. `enable` or
       `disable`.
     - `syncinterval` — minutes between synchronisation attempts.
-    - `interfaces` — interface names to listen on when `server_mode` is
-      `enable`; renders one `interface` block per entry.
 
-    The upstream server list is deliberately not exposed: the resource ignores
-    changes to both `ntpserver` and `interface`, so servers stay whatever the
-    device has and listener interfaces are added out-of-band (see
-    `fortios-ptn-fortigate-system-ntp-interface`). `interfaces` therefore only
-    takes effect on initial creation.
+    Neither the upstream server list nor the listener interfaces are exposed
+    here. The resource ignores `ntpserver` and `interface`, so both stay
+    whatever the device has, and listener interfaces are owned by
+    `fortios-ptn-fortigate-system-ntp-interface` — one instance per listener,
+    each tracking whether it created the listener so a pre-existing one
+    survives destroy.
+
+    That split is deliberate. `fortios_system_ntp` is a whole-object resource,
+    so any listener list set here is the *complete* list and would remove
+    anything not in it. Owning listeners separately is the only way to add one
+    without taking over the entire NTP configuration.
   EOT
   type = object({
     ntpsync      = optional(string, "enable")
     server_mode  = optional(string, "enable")
     syncinterval = optional(number, 1)
-    interfaces   = optional(list(string), [])
   })
   default = {}
 }

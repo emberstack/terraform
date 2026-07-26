@@ -24,7 +24,7 @@ variable "visibility" {
 }
 
 variable "default_branch" {
-  description = "Name of the branch to set as the repository default. The branch must already exist — this module does not create it, so a brand-new empty repository has nothing to point at."
+  description = "Name of the branch to set as the repository default. On a new repository `auto_init` creates the owner's default branch — normally `main` — so any other name must already exist."
   type        = string
   default     = "main"
   nullable    = false

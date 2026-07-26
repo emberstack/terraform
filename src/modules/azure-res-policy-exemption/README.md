@@ -12,7 +12,7 @@ There is no AVM module for `policyExemptions`. This module is a thin wrapper aro
 
 ```hcl
 module "exempt_legacy_storage_from_https" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-exemption?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-exemption?ref=vX.Y.Z"
 
   name                 = "exempt-legacy-storage-https"
   scope                = azurerm_storage_account.legacy.id
@@ -44,36 +44,7 @@ module "exempt_workload_rg" {
 }
 ```
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `name` | `string` | Exemption name. |
-| `scope` | `string` | ARM ID of the scope. |
-| `policy_assignment_id` | `string` | ARM ID of the assignment to exempt from. |
-| `exemption_category` | `string` | `Waiver` or `Mitigated`. |
-
-### Optional
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `display_name` | `string` | `null` | Portal display name. |
-| `description` | `string` | `null` | Long-form description. |
-| `expires_on` | `string` | `null` | RFC 3339 expiry. |
-| `policy_definition_reference_ids` | `list(string)` | `null` | Restrict to specific policies in an initiative. |
-| `metadata` | `any` | `{}` | Free-form metadata (HCL object). |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | Exemption ARM resource ID. |
-| `name` | Exemption name. |
-| `scope_kind` | Detected scope kind. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.

@@ -1,6 +1,6 @@
 # FortiGate
 
-39 modules on `fortinetdev/fortios` (`>= 1.25, < 2.0`), plus one nested submodule. The largest family
+39 modules on `fortinetdev/fortios`, plus one nested submodule. The largest family
 in the repository, and the one with the most provider-specific behaviour to know about.
 
 Module names carry an extra platform segment — `fortios-<kind>-fortigate-<service>-<resource>` — with
@@ -45,7 +45,7 @@ runtime requirements that are **not** Terraform inputs, and of the three that sh
 ### `fortios-ptn-fortigate-switchcontroller-managedswitch-ports`
 
 Per-port switch configuration, which the `fortios` provider does not cover. Drives the FortiOS CMDB
-REST API through `magodo/restful` (`>= 0.25.2, < 1.0`).
+REST API through `magodo/restful`.
 
 The parent fans a `ports` map out to one child module instance per port; the child owns the single
 `restful_resource` so the REST wiring lives in one place. Ports are keyed by name, so there is no
@@ -142,12 +142,18 @@ Pure CIDR arithmetic — no provider, no resources, no device. Give it an addres
 the network in CIDR notation, prefix length, usable host count, first/last usable address, and the
 usable and full ranges as `first-last` strings.
 
-Two edge cases behave as documented on the outputs:
+Two prefix lengths are special-cased, because neither follows the usual "network and broadcast are
+unusable" arithmetic:
 
 - **`/32`** reports `1` usable host, and first, last and range all resolve to the address itself.
-- **`/31`** reports `0` usable hosts and an inverted usable range. This is a known wart that is
-  [deliberately deferred](../contributing.md#known-deferred-work) — callers already consume the
-  current values. There is a banner in the module saying so.
+- **`/31`** reports `2` usable hosts. A point-to-point link has no network or broadcast address
+  (RFC 3021), so both addresses are usable and `ipv4_range` matches `ipv4_usable_range`. Either end
+  of the link produces identical output — `10.0.10.5/31` and `10.0.10.4/31` both report
+  `10.0.10.4-10.0.10.5`.
+
+The same maths is duplicated in `fortios-res-fortigate-system-interface` and
+`fortios-ptn-fortigate-system-interface`, which compute it from a configured or live interface
+address respectively. All three are kept in sync.
 
 ## Modules
 
@@ -237,13 +243,38 @@ Pre-shared keys and secrets are marked `sensitive` in
 `fortios-ptn-fortigate-wirelesscontroller-vap-nac`. `-vap` can generate a key with `random_password`,
 which puts the generated value in state by design.
 
-## Known issues
+## Re-binding NAC on an existing VAP
 
-Both are [deliberately deferred](../contributing.md#known-deferred-work) because they touch live
-devices:
+`fortios-ptn-fortigate-wirelesscontroller-vap-nac` binds the NAC profile onto the VAP with a REST
+`PUT` from a `terraform_data` provisioner, because the provider has no field for it that survives
+`ignore_changes` on the VAP itself.
 
-- **`triggers_replace` on the `vap-nac` NAC binding.** Without it, changing the binding updates
-  `terraform_data` in place instead of re-binding. Adding it re-binds live VAPs on the next apply.
-- **`ntp.interfaces` inside `ignore_changes`** in `fortios-ptn-fortigate-system-settings`. This is an
-  ownership question against the sibling NTP interface module — as it stands, both can believe they
-  own listener assignment.
+`terraform_data` only re-runs its create-time provisioner when it is **replaced**, and only
+`triggers_replace` replaces it — changing `input` updates in place. The module sets both from the
+same local, so a renamed VAP or a changed profile now re-binds rather than silently leaving the
+device on the old one.
+
+**Existing deployments take one replacement.** `triggers_replace` moves from `null` to a value, which
+forces a single replace per binding: unbind (`nac=disable`) then rebind. Clients on that VAP see a
+NAC re-auth. It does not recur — afterwards the binding is replaced only when it genuinely changes.
+
+To avoid even that, seed the value into state so config already matches and the plan comes back
+empty. `triggers_replace` is dynamically typed, so it is not a bare object in state — it needs the
+`{value, type}` wrapper, and a plain object is rejected with
+*`invalid key "vap_name" in dynamically-typed value`*:
+
+```json
+"triggers_replace": {"value": {"nac_profile": "<profile>", "vap_name": "<vap>"},
+                     "type": ["object", {"nac_profile": "string", "vap_name": "string"}]}
+```
+
+## Who owns NTP listener interfaces
+
+NTP listener interfaces are owned by `fortios-ptn-fortigate-system-ntp-interface`, one instance per
+listener. `fortios-ptn-fortigate-system-settings` owns only the scalar NTP settings — `ntpsync`,
+`server_mode` and `syncinterval` — and exposes nothing for listeners or servers.
+
+That split is not a workaround, it is the only shape that works. `fortios_system_ntp` is a
+whole-object resource, so any listener list set on it is the *complete* list and silently removes
+anything absent from it. Keeping `interface` in `ignore_changes` is what lets the sibling add
+listeners over REST without this module reverting them on the next apply.

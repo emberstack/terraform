@@ -12,7 +12,7 @@ The Azure Verified Modules ecosystem currently has [`avm-res-authorization-rolea
 
 ```hcl
 module "ddos_join" {
-  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-authorization-roledefinition?ref=v0.1.0"
+  source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-authorization-roledefinition?ref=vX.Y.Z"
 
   name        = "DDoS Protection Plan Join"
   description = "Read and join VNets to the DDoS Protection Plan."
@@ -65,46 +65,10 @@ module "signalr_keys_reader" {
 
 Setting a fixed GUID keeps the role's ARM ID stable if the resource is ever recreated, which matters when other Terraform stacks (or external tools) reference the role by full resource ID.
 
-## Inputs
+## Inputs and outputs
 
-### Required
-
-| Name | Type | Description |
-|---|---|---|
-| `name` | `string` | Display name. |
-| `scope` | `string` | Anchor scope ARM ID (subscription or management group). |
-
-### Optional — descriptive
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `description` | `string` | `null` | Long-form description. |
-| `role_definition_id` | `string` | `null` | Fixed role-definition GUID. Auto-generated when omitted. |
-
-### Optional — permissions
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `actions` | `set(string)` | `[]` | Control-plane operations granted. |
-| `not_actions` | `set(string)` | `[]` | Operations subtracted from `actions`. |
-| `data_actions` | `set(string)` | `[]` | Data-plane operations granted. |
-| `not_data_actions` | `set(string)` | `[]` | Operations subtracted from `data_actions`. |
-| `assignable_scopes` | `set(string)` | `[]` (== `[scope]`) | Scopes at which the role can be assigned. |
-
-## Outputs
-
-| Name | Description |
-|---|---|
-| `resource_id` | ARM resource ID of the role (use as `role_definition_id` on assignments). |
-| `role_definition_id` | GUID of the role. |
-| `name` | Role name. |
-| `scope` | Anchor scope. |
-| `resource` | Full `azurerm_role_definition` resource. |
-
-## Requirements
-
-- Terraform `>= 1.15`
-- `hashicorp/azurerm` `>= 4.81, < 5.0`
+See [`variables.tf`](variables.tf) and [`outputs.tf`](outputs.tf). Every variable and output
+carries a description, and CI enforces that.
 
 ## Notes
 
