@@ -1,7 +1,7 @@
-name: pipeline
+name: Pipeline
 
-# Trunk-based: `main` is the only long-lived branch and every merge to it is
-# released. Versions come from GitVersion.yaml.
+# Trunk-based: `main` is the only long-lived branch, and every merge to it that
+# changes something under `src/` is released. Versions come from GitVersion.yaml.
 #
 # No cloud credentials anywhere — `validate -backend=false` resolves providers
 # from the registry and checks configuration statically.
@@ -169,7 +169,7 @@ jobs:
           note=""
           if [ "${GITHUB_REF}" != "refs/heads/main" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             release=false
-            note="not a push to main — build only"
+            note="not a push to \`main\`, so this run validates only"
           elif [ "${SRC}" != "true" ]; then
             # A version is a statement about what a consumer resolves at a ref.
             # Docs, CI and repository config never reach one, so numbering them
@@ -178,7 +178,7 @@ jobs:
             # change carries them out, and the notes cover the whole range since
             # the last tag, so they appear there.
             release=false
-            note="nothing under \`src/\` changed — rides out with the next module change"
+            note="nothing under \`src/\` changed, so these commits ride out with the next module change"
           else
             # Check the remote rather than this checkout: another run may have
             # tagged since the clone.
@@ -186,24 +186,38 @@ jobs:
             if [ -n "$existing" ]; then
               release=false
               if [ "$existing" = "$GITHUB_SHA" ]; then
-                note="\`${tag}\` is already tagged at this commit — nothing to release"
+                note="\`${tag}\` is already tagged at this commit"
               else
-                note="\`${tag}\` already exists on a different commit — refusing to move it"
+                note="\`${tag}\` already exists on a different commit, and a published tag is never moved"
                 echo "::warning::${tag} already exists at ${existing}, not ${GITHUB_SHA} — refusing to move it."
               fi
             fi
           fi
           echo "release=${release}" >> "$GITHUB_OUTPUT"
 
+          if [ "$release" = "true" ]; then
+            verdict="Yes — \`${tag}\` will be tagged and published"
+          else
+            verdict="No — ${note}"
+          fi
+
+          if [ "${MODULES:-}" = "true" ]; then
+            scope="Formatting, consistency checks, and \`validate\` across the module tree"
+          elif [ "${DOCS:-}" = "true" ]; then
+            scope="Consistency checks only"
+          else
+            scope="None — \`build\` is skipped"
+          fi
+
           {
-            echo "### discovery"
+            echo "## Discovery"
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| version | \`${tag}\` |"
-            echo "| src changed | \`${SRC:-unknown}\` — gates the release |"
-            echo "| modules / docs changed | \`${MODULES:-unknown}\` / \`${DOCS:-unknown}\` — gate the build |"
-            echo "| will release | \`${release}\`${note:+ — ${note}} |"
+            echo "| **Version** | \`${tag}\` |"
+            echo "| **Release** | ${verdict} |"
+            echo "| **Module sources changed** | $([ "${SRC:-}" = "true" ] && echo Yes || echo No) |"
+            echo "| **Validation scope** | ${scope} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Steps are gated on their own flag and on `!cancelled()` so a fmt failure
@@ -282,10 +296,12 @@ jobs:
           done
 
           {
-            echo "### build"
+            echo "## Build"
             echo
-            echo "\`${#dirs[@]}\` directories checked, \`${#failed[@]}\` failed."
-            if [ ${#failed[@]} -gt 0 ]; then
+            if [ ${#failed[@]} -eq 0 ]; then
+              echo "**${#dirs[@]}** module directories validated. No failures."
+            else
+              echo "**${#dirs[@]}** module directories validated, **${#failed[@]}** failed:"
               echo
               for entry in "${failed[@]}"; do echo "- \`$entry\`"; done
             fi
@@ -314,11 +330,13 @@ jobs:
             echo "::error::One or more pipeline jobs were cancelled"
             exit 1
           fi
-          echo "All pipeline jobs passed or were skipped"
+          echo "All pipeline jobs passed or were skipped."
 
   # `always()` because build is legitimately skipped when a merge touched
-  # neither modules nor docs — that must still cut a version, since every merge
-  # to main is a release. A build that failed or was cancelled blocks it.
+  # neither modules nor docs. That no longer releases either — the `src` gate in
+  # `discovery` handles it — but the condition still has to tolerate a skipped
+  # build so a docs merge that DOES ride out with a module change is not blocked
+  # by it. A build that failed or was cancelled always blocks.
   release:
     name: release
     needs: [discovery, build]
@@ -353,7 +371,11 @@ jobs:
           existing=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk '{print $1}')
           if [ -n "$existing" ]; then
             echo "::warning::${TAG} appeared during the build — not releasing."
-            echo "\`${TAG}\` appeared during the build — not released." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Release"
+              echo
+              echo "Skipped. \`${TAG}\` was tagged by another run while this build was in progress."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -393,6 +415,8 @@ jobs:
             --title "$TAG" \
             --notes-file release-notes.md
 
-          echo "### release" >> "$GITHUB_STEP_SUMMARY"
-          echo "Released [\`$TAG\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})." \
-            >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Release"
+            echo
+            echo "Published **[\`${TAG}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})** from \`${GITHUB_SHA:0:7}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
