@@ -123,11 +123,13 @@ gh api repos/emberstack/terraform/actions/permissions -X PUT \
 ```
 
 ⚠️ **Squash-merge drops the `!` marker.** The repository's squash title is `COMMIT_OR_PR_TITLE`, so on
-a multi-commit pull request the squashed subject becomes the *PR title* — a `feat!:` in a commit
-subject is lost and the break releases as an ordinary minor. The squash body is `COMMIT_MESSAGES`, so a
-`BREAKING CHANGE:` footer does survive. **Under squash-merge, use the footer** — the one marker that
-survives whatever the title resolves to. A `!` only lands where that setting reads from: the *commit
-subject* on a single-commit branch, the *pull request title* on a multi-commit one.
+a multi-commit pull request the squashed subject becomes the *PR title*, and a `feat!:` written only
+in a commit subject is lost. That no longer changes the version — `feat!:` and `feat:` are both a
+minor — but it silently drops the change out of the **Breaking Changes** section of the release
+notes, which is now the only place a consumer learns of it. The squash body is `COMMIT_MESSAGES`, so
+a `BREAKING CHANGE:` footer does survive. **Under squash-merge, use the footer** — the one marker
+that survives whatever the title resolves to. A `!` only lands where that setting reads from: the
+*commit subject* on a single-commit branch, the *pull request title* on a multi-commit one.
 
 All three checks live in one job on purpose: split across separate jobs, per-job VM and checkout
 overhead costs more runner time than the parallelism saves. The steps use `!cancelled()`, so a
@@ -147,14 +149,14 @@ be affected:
 | `src/**` | yes | yes |
 | `docs/**`, `*.md` | no | yes |
 | `.github/workflows/pipeline.yaml` | yes | yes |
-| `.github/**`, `LICENSE`, `GitVersion.yaml`, `renovate.json` | no | yes |
+| `.github/**`, `LICENSE`, `GitVersion.yaml`, `renovate.json`, `cliff.toml` | no | yes |
 | anything else | no | no — `build` is skipped entirely |
 
 The `docs` filter is wider than the set of files the consistency check *reads*, because it must also
-cover every path the documentation *links to*. `LICENSE`, `GitVersion.yaml`, `renovate.json` and the
-chore workflows are all link targets: move one without touching a `.md` file and `build` would skip,
-the merge would go green, and the broken link would fail the next contributor's unrelated pull
-request instead.
+cover every path the documentation *links to*. `LICENSE`, `GitVersion.yaml`, `renovate.json`,
+`cliff.toml` and the chore workflows are all link targets: move one without touching a `.md` file
+and `build` would skip, the merge would go green, and the broken link would fail the next
+contributor's unrelated pull request instead.
 
 The consistency checks run whenever `build` runs, because they validate module structure — the four
 required files, and a `description` on every variable and output — as well as documentation. A new
@@ -336,13 +338,9 @@ The pipeline tags and publishes a GitHub Release on every push to `main`. The ve
 
 | Merge to `main` | Bump |
 |---|---|
-| `feat:` in the subject, or `+semver: minor` | **minor** |
-| anything else — `fix:`, `refactor:`, `docs:`, `chore:`, an unconventional subject | **patch** |
-| `<type>!:` in the subject, a `BREAKING CHANGE:` footer, or `+semver: major` | **major** |
-
-Both breaking-change markers are accepted. Conventional Commits (`feat!:`, `BREAKING CHANGE:`) is the
-one an external contributor is likeliest to know; `+semver: major` is what the other Emberstack
-pipelines use, so it works here too.
+| `feat:` in the subject — with or without a `!` — or `+semver: minor` | **minor** |
+| anything else — `fix:`, `fix!:`, `refactor:`, `docs:`, `chore:`, an unconventional subject | **patch** |
+| `+semver: major` on a line of its own, or a bumped `next-version` | **major** |
 
 Only `feat:` earns a minor because a new module is additive surface that breaks no existing caller —
 the definition of a minor. A fix or a dependency bump is not, and numbering one as a minor tells a
@@ -352,19 +350,39 @@ neither pattern falls through to patch, so a sloppy message under-reports rather
 Every merge still gets a version, including `docs:` and `chore:` ones — on a trunk-based repo the
 change reached consumers the moment it landed, so it should be numbered.
 
-The library starts at **`v0.1.0`**:
-
 ```
-v0.1.0 --feat--> v0.2.0 --fix--> v0.2.1 --docs--> v0.2.2 --feat!--> v1.0.0
+v0.1.0 --feat--> v0.2.0 --fix--> v0.2.1 --feat!--> v0.3.0 --+semver: major--> v1.0.0
 ```
 
-**The first marked breaking change graduates the library to `v1.0.0`.** GitVersion applies the major
-bump literally at `0.x` rather than following the convention where `0.x` absorbs breaks into the
-minor. That is worth knowing before you type the `!`: it is also the moment the library stops
-advertising itself as unstable.
+### A major is asked for, never inferred
 
-**Mark breaking changes.** It is the one thing about a commit message that changes the version, and
-the only signal a consumer pinned to a tag has. Use `feat(modules)!: rename input` or a
+**`<type>!:` and a `BREAKING CHANGE:` footer do not bump the major.** They mark the change as
+breaking in the [release notes](#release-notes) and nothing more. On a `0.x` library that is the
+useful behaviour: breaks accumulate and get released together as a considered major, rather than
+each one graduating the library the moment somebody types a `!`.
+
+Two ways to cut one, both deliberate:
+
+```yaml
+# GitVersion.yaml — set it in the same pull request as the change.
+next-version: 1.0.0
+```
+
+```
+# ...or a commit footer, on a line of its own.
++semver: major
+```
+
+`next-version` is a floor, so it wins over whatever the subject says and the next release takes it
+exactly. It then goes inert by itself: once the tag exists it sits below it and stops mattering, so
+`v1.0.0` is followed by `v1.0.1` and `v1.1.0` normally, whether or not you tidy the line away.
+
+> ⚠️ **`next-version` is a switch, not a plan.** While it is set and not yet reached, *every* merge
+> releases it — a `docs:` typo fix included. Set it in the pull request that carries the change, not
+> ahead of time.
+
+**Still mark breaking changes.** The version no longer carries the signal, so the notes are the only
+place a consumer pinned to a tag can read it. Use `feat(modules)!: rename input` or a
 `BREAKING CHANGE:` footer — under squash-merge only the latter always survives.
 
 One nuance worth knowing: GitVersion computes a single version for the whole range since the last
@@ -383,6 +401,27 @@ commit messages, and a hand-picked version desynchronises the two permanently �
 the base GitVersion derives the *next* version from, so a typo shifts the whole line and cannot be
 walked back without deleting a published tag.
 
+### Release notes
+
+Notes are generated by [git-cliff](https://git-cliff.org) from the commits in the release,
+configured by [cliff.toml](../cliff.toml). There is no committed `CHANGELOG.md` — on a repo that
+publishes every merge the releases page already is one, and a file would be a second copy to keep
+honest.
+
+Commits are grouped by type: breaking changes first, then features, fixes, performance,
+refactoring, CI, docs, tests and reverts. Maintenance and dependency bumps collapse behind a
+`<details>` toggle, so a release dominated by Renovate still shows the one `fix:` that matters. A
+subject matching no convention lands under **Other Changes** rather than disappearing — it
+released, so it gets listed. Every set of notes ends with the `?ref=` pin for that exact version,
+because a module library is only useful if you can copy the thing you just published.
+
+> ⚠️ **`cliff.toml` and `GitVersion.yaml` diverge on purpose — keep the anchoring identical.**
+> git-cliff flags all three markers (`<type>!:`, a `BREAKING CHANGE:` footer, `+semver: major`) as
+> breaking; GitVersion bumps the major for the last one only. That gap is the design — it is what
+> lets a break be announced without forcing a major. What must not drift is the `(?m)` anchoring:
+> a marker on a body line has to mean the same thing in both, or the notes and the number describe
+> different commits.
+
 ### When a release does not happen
 
 | What happened | Recovery |
@@ -391,7 +430,7 @@ walked back without deleting a published tag.
 | The run never started — the workflow file itself was broken | Push the fix. That merge triggers the pipeline and releases normally. |
 | Re-run is no longer offered, because the run aged out | Run the workflow manually from the Actions tab against `main`. |
 | A merge landed while CI was red | Nothing to do. The next successful release covers both merges under one version. |
-| A tag exists with no release behind it | `gh release create v<x.y.z> --generate-notes`. The pipeline will **not** backfill it — `discovery` skips any version whose tag already exists. |
+| A tag exists with no release behind it | Generate the notes and attach them by hand — `GITHUB_TOKEN=$(gh auth token) git cliff --tag v<x.y.z> v<prev>..v<x.y.z> --strip header -o notes.md` then `gh release create v<x.y.z> --notes-file notes.md`. The pipeline will **not** backfill it — `discovery` skips any version whose tag already exists. |
 
 The manual trigger takes no inputs on purpose. It re-runs the pipeline against the current head of the
 selected branch, derives the version the same way a push would, and the existing-tag check makes a

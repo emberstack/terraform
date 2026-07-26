@@ -68,8 +68,9 @@ checksum mismatches. Consumers pin their own.
 push to `main` and every pull request against `main`: `fmt`, a documentation consistency check, and
 `init` + `validate` across every module directory. Pushing a topic branch runs nothing until you open
 the pull request. `release` runs on push to `main` only — merges are tagged and published
-automatically, a `feat:` commit bumping the minor, anything else the patch, and a commit marked
-breaking the major.
+automatically, a `feat:` commit bumping the minor and anything else the patch. Majors are not
+inferred from breaking changes — they are asked for with `+semver: major` or a bumped
+`next-version`.
 
 The same checks locally:
 

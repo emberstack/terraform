@@ -1,0 +1,192 @@
+# git-cliff configuration — https://git-cliff.org/docs/configuration
+#
+# Generates the notes attached to every GitHub Release. The pipeline's `release`
+# job runs this over the commits since the last tag; there is no committed
+# CHANGELOG.md, because on a trunk-based repo the releases page already is one.
+#
+# THE BREAKING GROUP IS THE ONLY PLACE A BREAK IS ANNOUNCED.
+# ----------------------------------------------------------
+# GitVersion no longer majors on `<type>!:` or a `BREAKING CHANGE:` footer — a
+# major is cut deliberately, with `+semver: major` or a bumped `next-version`.
+# So the version number does not tell a consumer that an input was renamed.
+# These notes do. That makes the rules below load-bearing rather than cosmetic:
+#
+#   <type>!:            in the subject          -> 💥 Breaking Changes  (no bump)
+#   BREAKING CHANGE:    at the start of a line  -> 💥 Breaking Changes  (no bump)
+#   +semver: major      at the start of a line  -> 💥 Breaking Changes  + major
+#
+# The divergence from GitVersion.yaml is deliberate. What is NOT allowed to
+# drift is how the two files *recognise* a marker, and there are two halves to
+# that. Both must anchor with `m` so a marker on a body line reads the same in
+# each, and both must ignore case — GitVersion's regexes are case-insensitive,
+# so `+SemVer: Major` cuts a major. Measured before `i` was added here: it
+# bumped the major and the notes filed it under Other Changes, announcing
+# nothing. Hence `(?im)` throughout. See docs/contributing.md#releases.
+#
+# `c.username` is nullable — GitHub returns a null author for any commit whose
+# e-mail is not linked to an account — so the contributor loops below pipe it
+# through `default(value="")`. Without that, one such commit aborts the whole
+# render and the release job fails with no tag and no release.
+#
+#   Type              -> Group                        Sort
+#   ----------------- + ---------------------------- ----
+#   (breaking)        -> 💥 Breaking Changes          00
+#   feat              -> 🚀 Features                  01
+#   fix               -> 🐛 Bug Fixes                 02
+#   perf              -> ⚡ Performance               03
+#   refactor          -> ♻️ Refactoring               04
+#   ci / build        -> ⚙️ CI/CD                     05
+#   docs              -> 📖 Documentation             06
+#   test              -> 🧪 Testing                   07
+#   revert            -> ⏪ Reverts                   08
+#   anything else     -> 🗃️ Other Changes             09
+#   chore             -> 🔧 Maintenance   (collapsed) 85
+#   chore(deps) / bot -> 📦 Dependencies  (collapsed) 90
+
+[remote.github]
+owner = "emberstack"
+repo = "terraform"
+
+[changelog]
+# No header: the release title is already the version.
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+{%- set clean_group = group | striptags | trim | upper_first -%}
+{%- if clean_group == "📦 Dependencies" or clean_group == "🔧 Maintenance" %}
+<details>
+<summary><strong>{{ clean_group }}</strong> ({{ commits | length }} {% if clean_group == "📦 Dependencies" %}updates{% else %}items{% endif %})</summary>
+
+{% for commit in commits %}- {% if commit.remote.pr_title %}{{ commit.remote.pr_title | trim }}{% else %}{{ commit.message | split(pat="\n") | first | trim }}{% endif %}{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}{% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/emberstack/terraform/pull/{{ commit.remote.pr_number }}){% endif %}
+{% endfor %}
+</details>
+{% else %}
+### {{ clean_group }}
+
+{% for commit in commits %}- {% if commit.remote.pr_title %}{{ commit.remote.pr_title | trim }}{% else %}{{ commit.message | split(pat="\n") | first | trim }}{% endif %}{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}{% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/emberstack/terraform/pull/{{ commit.remote.pr_number }}){% endif %}
+{% endfor %}
+{%- endif -%}
+{% endfor -%}
+
+{%- set new_humans = [] -%}
+{%- for c in github.contributors -%}
+{%- if c.is_first_time and c.username | default(value="") | replace(from="[bot]", to="") == c.username -%}
+{%- set_global new_humans = new_humans | concat(with=c) -%}
+{%- endif -%}
+{%- endfor -%}
+{%- if new_humans | length > 0 %}
+
+### 🎉 New Contributors
+
+{% for c in new_humans %}- @{{ c.username }} made their first contribution{% if c.pr_number %} in [#{{ c.pr_number }}](https://github.com/emberstack/terraform/pull/{{ c.pr_number }}){% endif %}
+{% endfor -%}
+{%- endif -%}
+
+{%- set all_humans = [] -%}
+{%- for c in github.contributors -%}
+{%- if c.username | default(value="") | replace(from="[bot]", to="") == c.username -%}
+{%- set_global all_humans = all_humans | concat(with="@" ~ c.username) -%}
+{%- endif -%}
+{%- endfor -%}
+{%- if all_humans | length > 0 %}
+
+### 👥 Contributors
+
+{{ all_humans | join(sep=" · ") }}
+{%- endif %}
+
+---
+
+Modules are consumed by git ref, so a release is only useful if you can pin it:
+
+```hcl
+source = "git::https://github.com/emberstack/terraform.git//src/modules/<module-name>?ref={{ version }}"
+```
+{% if previous.version %}
+**Full diff:** [`{{ previous.version }}...{{ version }}`](https://github.com/emberstack/terraform/compare/{{ previous.version }}...{{ version }})
+{%- endif %}
+"""
+trim = false
+postprocessors = [
+    { pattern = '\A\s+', replace = "" },   # strip leading whitespace from rendered output
+    # Ensure exactly one trailing newline. orhun/git-cliff-action writes the
+    # output through a heredoc with a fixed `EOF` delimiter — without a final
+    # newline it glues `EOF` to the last line of content and the step dies with
+    # "Matching delimiter not found 'EOF'".
+    { pattern = '\s*\z', replace = "\n" },
+]
+
+[git]
+# Parsing is done by the explicit rules below rather than by git-cliff's
+# conventional-commit parser, so that the breaking-change rules can be written
+# to match GitVersion's regexes character for character. `filter_unconventional`
+# stays off so a non-conventional subject still appears, under Other Changes,
+# instead of vanishing from the notes of a release that shipped it.
+conventional_commits = false
+filter_unconventional = false
+tag_pattern = "v[0-9].*"
+sort_commits = "newest"
+
+commit_preprocessors = [
+    { pattern = '^\s+', replace = "" },
+    # GitHub's squash merge appends the pull request number to the subject. The
+    # number is rendered from the API below, so drop the duplicate.
+    { pattern = '\s*\(#[0-9]+\)\s*$', replace = "" },
+]
+
+# Evaluated top to bottom, first match wins.
+#
+# Every type rule requires the colon. A bare `^feat` prefix also matched
+# subjects like "features are nice", filing an ordinary patch under Features
+# while GitVersion — which requires `feat:` — released it as a patch.
+commit_parsers = [
+    # === 1. Noise =============================================================
+    { message = "^Merge branch", skip = true },
+    { message = "^Merge pull request", skip = true },
+    { message = "^Merge remote-tracking", skip = true },
+    { message = "^$", skip = true },
+
+    # === 2. Breaking changes ==================================================
+    # Before the type rules, so `feat!:` lands here and not under Features.
+    # `(?im)` mirrors GitVersion: `m` because a `feat!:` on a BODY line still
+    # bumps the minor there, `i` because its regexes are case-insensitive. Drop
+    # either flag and a commit moves the version while the notes file it
+    # somewhere that announces nothing.
+    { message = '(?im)^\w+(\([^)]*\))?!:', group = "<!-- 00 -->💥 Breaking Changes" },
+    { message = '(?im)^BREAKING[ -]CHANGE:', group = "<!-- 00 -->💥 Breaking Changes" },
+    { body = '(?im)^BREAKING[ -]CHANGE:', group = "<!-- 00 -->💥 Breaking Changes" },
+    { message = '(?im)^\+semver:\s?(breaking|major)', group = "<!-- 00 -->💥 Breaking Changes" },
+    { body = '(?im)^\+semver:\s?(breaking|major)', group = "<!-- 00 -->💥 Breaking Changes" },
+
+    # === 3. Reverts ===========================================================
+    # Listed, not skipped. A revert is a merge like any other here, so it ships
+    # its own version — and a release that says nothing about why the previous
+    # behaviour came back is worse than no notes. Placed after the breaking
+    # rules so a revert of a breaking change still lands under Breaking Changes.
+    { message = "(?i)^revert", group = "<!-- 08 -->⏪ Reverts" },
+
+    # === 4. Dependencies (collapsed) ==========================================
+    # Renovate commits are prefixed `chore(deps):` by renovate.json. The author
+    # rules are a backstop: Renovate authenticates with an org PAT, so the
+    # identity on its commits depends on who that token belongs to.
+    { message = '(?i)^chore\(deps\)', group = "<!-- 90 -->📦 Dependencies" },
+    { field = "author.name", pattern = '^renovate\[bot\]', group = "<!-- 90 -->📦 Dependencies" },
+    { field = "author.name", pattern = '^dependabot\[bot\]', group = "<!-- 90 -->📦 Dependencies" },
+    { field = "author.name", pattern = '^github-actions\[bot\]', group = "<!-- 90 -->📦 Dependencies" },
+
+    # === 5. Conventional types ================================================
+    { message = '(?i)^feat(\([^)]*\))?!?:', group = "<!-- 01 -->🚀 Features" },
+    { message = '(?i)^fix(\([^)]*\))?!?:', group = "<!-- 02 -->🐛 Bug Fixes" },
+    { message = '(?i)^perf(\([^)]*\))?!?:', group = "<!-- 03 -->⚡ Performance" },
+    { message = '(?i)^refactor(\([^)]*\))?!?:', group = "<!-- 04 -->♻️ Refactoring" },
+    { message = '(?i)^ci(\([^)]*\))?!?:', group = "<!-- 05 -->⚙️ CI/CD" },
+    { message = '(?i)^build(\([^)]*\))?!?:', group = "<!-- 05 -->⚙️ CI/CD" },
+    { message = '(?i)^docs?(\([^)]*\))?!?:', group = "<!-- 06 -->📖 Documentation" },
+    { message = '(?i)^test(\([^)]*\))?!?:', group = "<!-- 07 -->🧪 Testing" },
+    { message = '(?i)^style(\([^)]*\))?!?:', group = "<!-- 85 -->🔧 Maintenance" },
+    { message = '(?i)^chore(\([^)]*\))?!?:', group = "<!-- 85 -->🔧 Maintenance" },
+
+    # === 6. Catch-all =========================================================
+    # An unconventional subject releases as a patch rather than being rejected,
+    # so it has to appear somewhere.
+    { message = ".*", group = "<!-- 09 -->🗃️ Other Changes" },
+]

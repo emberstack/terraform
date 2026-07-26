@@ -1,38 +1,55 @@
 # GitVersion — trunk-based. `main` is the only long-lived branch and the
 # pipeline tags and releases every push to it.
 #
-#   `feat:` subject                                 -> minor
-#   anything else                                   -> patch
-#   `<type>!:` subject or `BREAKING CHANGE:` footer -> major
+#   `feat:` subject                     -> minor
+#   anything else                       -> patch
+#   `+semver: major` on a line of its own, or a bumped `next-version` -> major
 #
 # Full behaviour: docs/contributing.md#releases
 
 workflow: GitHubFlow/v1
 
-# Floor for the first release. Ignored once tags go past it.
+# Floor for the release. Ignored once tags go past it — so it doubles as the
+# deliberate way to cut a major: set it to the new number in the same pull
+# request as the change, and the next release takes it. Once that tag exists
+# the line is below it and goes inert on its own; it can be left or tidied up.
+#
+# It is a switch, not a plan. While it is set and not yet reached, *every*
+# merge releases it, whatever the subject says.
 next-version: 0.1.0
 
-# Two markers, both accepted. Conventional Commits (`feat!:`, a `BREAKING
-# CHANGE:` footer) because an external contributor is far more likely to know
-# it; `+semver: major` because that is what the other Emberstack pipelines use
-# and the muscle memory should transfer.
-major-version-bump-message: '(?m)^(?:\w+(?:\([^)]*\))?!:|BREAKING[ -]CHANGE:|\+semver:\s?(?:breaking|major))'
+# A major is never inferred, only asked for. `<type>!:` and a `BREAKING CHANGE:`
+# footer deliberately do NOT appear here: on a 0.x library breaks are batched
+# into a considered major rather than cut one at a time by whoever writes the
+# commit. They still mark the change as breaking in the release notes — see
+# cliff.toml — which is where a consumer now reads it, since the version number
+# no longer carries that signal.
+#
+# `+semver: breaking` is accepted as an alias because GitVersion's own docs use
+# both spellings.
+major-version-bump-message: '(?m)^\+semver:\s?(?:breaking|major)'
 
 # Only `feat:` earns a minor. A new module is additive surface that breaks no
 # existing caller, which is a minor under semver; a fix or a dependency bump is
 # not, and shipping one as a minor tells a consumer pinned to a tag that there
 # is something new to adopt when there is not.
 #
+# `!?` is load-bearing. Without it `feat!:` matches neither pattern — the colon
+# has to follow `feat` or its scope directly — and a breaking feature falls all
+# the way through to a patch, the weakest signal available. Measured: `feat!:`
+# went out as 0.2.2 instead of 0.3.0.
+#
 # There is deliberately no patch-version-bump-message. Anything matching neither
 # this nor the major pattern falls through to the branch increment below, so an
 # unconventional subject under-reports rather than inflating.
-minor-version-bump-message: '(?m)^(?:feat(?:\([^)]*\))?:|\+semver:\s?(?:feature|minor))'
+minor-version-bump-message: '(?m)^(?:feat(?:\([^)]*\))?!?:|\+semver:\s?(?:feature|minor))'
 
-# `(?!)` never matches, disabling no-bump entirely. This is load-bearing:
-# GitVersion evaluates no-bump BEFORE major-version-bump-message and
-# short-circuits, so under the stock pattern a `docs:` or `chore:` subject
-# carrying a `BREAKING CHANGE:` footer suppresses the major bump and ships a
-# contract break as a routine release.
+# `(?!)` never matches, disabling no-bump entirely. The stock pattern is
+# `+semver: none|skip`, and it is evaluated BEFORE the others and short-circuits
+# — so leaving it enabled would let any contributor cancel the bump their own
+# change earns. Measured: with the stock pattern, `feat:` plus a `+semver: none`
+# footer released 0.2.2 instead of 0.3.0. On a repo where every merge is
+# published, a merge that refuses to be numbered is not a thing we want.
 no-bump-message: '(?!)'
 
 branches:

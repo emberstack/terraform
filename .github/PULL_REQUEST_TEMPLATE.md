@@ -11,12 +11,14 @@ and a consumer's `terraform init`. Pick one:
       minor.
 - [ ] **Internal or corrective** — a fix, a refactor, docs, CI, a dependency bump. Ships as a patch.
 - [ ] **Breaking** — renamed or removed an input or output, changed a default, changed a resource
-      address, or tightened validation that previously accepted a working value.
+      address, or tightened validation that previously accepted a working value. Still ships as a
+      minor or a patch; majors are cut deliberately, not inferred.
 
-> ⚠️ If this is breaking, put `BREAKING CHANGE:` on its own line in a commit footer — the squashed
-> body keeps every commit message, so the footer is matched wherever the subject came from. A `!` is
-> only matched in the subject itself: the commit subject when the branch has one commit, the pull
-> request title when it has two or more. Otherwise the break ships as an ordinary release.
+> ⚠️ A breaking change does **not** bump the major here, so the release notes are the only place a
+> consumer will see it. Put `BREAKING CHANGE:` on its own line in a commit footer — the squashed body
+> keeps every commit message, so the footer survives wherever the subject came from. A `!` is only
+> matched in the subject itself: the commit subject on a single-commit branch, the pull request title
+> when there are two or more. Unmarked, the break is invisible.
 
 ## Checks run locally
 

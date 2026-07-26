@@ -29,8 +29,9 @@ CI is [`.github/workflows/pipeline.yaml`](.github/workflows/pipeline.yaml), four
 **discovery → build → gate → release**. `discovery` resolves the version, `build` runs `fmt` + the docs
 check + `validate`, `gate` is the single required status check, and `release` tags and publishes.
 `build` is skipped entirely when a change touches neither `src/` nor the docs; any change under `src/`
-validates the whole tree. Every merge to `main` is released — **`feat:` bumps the minor, anything else
-the patch, a marked breaking change the major.** ([details](docs/contributing.md#what-ci-runs))
+validates the whole tree. Every merge to `main` is released — **`feat:` bumps the minor and anything else
+the patch. A major is never inferred: ask for it with `+semver: major` or a bumped `next-version`.**
+([details](docs/contributing.md#what-ci-runs))
 
 Run the same checks locally before pushing:
 
@@ -56,10 +57,11 @@ These are the ones that cause real damage when ignored. Each links to the reason
 1. **Every merge to `main` is a release.** Trunk-based: there is one long-lived branch, and merging
    to it tags a version and publishes it. The commit subject picks the segment — `feat:` a minor,
    anything else a patch. Verify a module's interface and behaviour before changing either, and
-   prefer additive changes with defaults. A breaking change is not forbidden — it is a major bump,
-   so mark it `<type>!:` or with a `BREAKING CHANGE:` footer and let consumers opt in. An unmarked
-   break ships as a routine release. The library starts at `v0.1.0`, and the first marked break
-   graduates it to `v1.0.0` — GitVersion does not absorb breaks into the minor at `0.x`.
+   prefer additive changes with defaults. A breaking change is not forbidden, but it does **not**
+   bump the major on its own: mark it `<type>!:` or with a `BREAKING CHANGE:` footer so the release
+   notes say so, and let breaks accumulate until a major is cut deliberately. Because the version
+   no longer carries that signal, an unmarked break is invisible — the notes are the only place a
+   consumer reads it.
 2. **Never delete or re-address a module based on in-repo reference count.** Submodule paths are
    addressable by git ref, so external callers reach them directly.
    `azure-res-network-privatednszone/modules/vnet-link` reads as dead code and is not.
@@ -77,6 +79,12 @@ These are the ones that cause real damage when ignored. Each links to the reason
    configures and authenticates. (The one exception in the tree is under `examples/`.)
 7. **Every provider constraint keeps an upper bound below the next major.**
    ([matrix](docs/usage.md#version-requirements))
+8. **`GitVersion.yaml` and `cliff.toml` diverge on purpose — keep the anchoring identical.**
+   `cliff.toml` flags all three breaking markers (`<type>!:`, a `BREAKING CHANGE:` footer,
+   `+semver: major`) in the notes; GitVersion majors on the last one only. That gap is the design.
+   What must not drift is the `(?m)` anchoring: a marker on a body line has to behave the same in
+   both, or the notes and the number describe different commits.
+   ([why](docs/contributing.md#release-notes))
 
 ## Traps when editing modules
 

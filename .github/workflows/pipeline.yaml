@@ -115,14 +115,15 @@ jobs:
             # Broader than "files the consistency check reads": it must also
             # cover every path the docs *link to*, or moving one of them skips
             # build, merges green, and breaks CI for the next unrelated pull
-            # request. LICENSE, GitVersion.yaml, renovate.json and the chore
-            # workflows are all link targets.
+            # request. LICENSE, GitVersion.yaml, renovate.json, cliff.toml and
+            # the chore workflows are all link targets.
             docs:
               - 'docs/**'
               - '*.md'
               - 'LICENSE'
               - 'GitVersion.yaml'
               - 'renovate.json'
+              - 'cliff.toml'
               - '.github/**'
 
       - name: Evaluate release
@@ -311,14 +312,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Shallow is enough: `gh release create --generate-notes` computes notes
-      # server-side, and `ls-remote` needs no local history.
+      # git-cliff reads the commits since the last tag and needs every tag to
+      # find it, so the shallow default will not do. GitHub's `--generate-notes`
+      # computed this server-side and needed no history; git-cliff does it here
+      # so the grouping matches the commit convention this repo actually uses.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Create release
+      - name: Check for a concurrent tag
+        id: guard
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.discovery.outputs.tag }}
         run: |
           set -euo pipefail
@@ -329,13 +334,44 @@ jobs:
           if [ -n "$existing" ]; then
             echo "::warning::${TAG} appeared during the build — not releasing."
             echo "\`${TAG}\` appeared during the build — not released." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # `--unreleased` is everything since the last tag, which is exactly the
+      # range the version covers — the tag itself does not exist yet, so `--tag`
+      # supplies the heading and the pin snippet. Grouping lives in cliff.toml,
+      # whose breaking-change rules must stay in step with GitVersion.yaml.
+      - name: Generate release notes
+        if: steps.guard.outputs.skip != 'true'
+        uses: orhun/git-cliff-action@v4.8.0
+        with:
+          config: cliff.toml
+          args: --unreleased --tag ${{ needs.discovery.outputs.tag }} --strip header
+        env:
+          OUTPUT: release-notes.md
+          GITHUB_REPO: ${{ github.repository }}
+          # Read-only. Enriches each commit with its pull request number, title
+          # and author handle — and, more importantly, lifts the API rate limit
+          # from 60/hr per runner IP to 1,000/hr, since git-cliff pages the whole
+          # commit and closed-pull-request history on every run. Verified to fall
+          # back to bare commit subjects when the token is missing or rejected
+          # rather than failing the step.
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Create release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.discovery.outputs.tag }}
+        run: |
+          set -euo pipefail
 
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --generate-notes
+            --notes-file release-notes.md
 
           echo "### release" >> "$GITHUB_STEP_SUMMARY"
           echo "Released [\`$TAG\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})." \

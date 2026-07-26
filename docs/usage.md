@@ -117,8 +117,9 @@ is the correct place for it.
 ## Upgrading
 
 1. Read the diff between your pinned tag and the target tag for the module path you consume. The
-   release notes on the intervening tags summarise what landed; a major tag means a break was
-   marked, so read that one closely.
+   release notes on the intervening tags summarise what landed. **A break can land in a minor or a
+   patch** — majors here are cut deliberately, not inferred — so read the notes rather than the
+   number: anything breaking is listed under *Breaking Changes*.
 2. `terraform plan` before merging. Modules aim for additive change with defaults, but plan output is
    the only reliable answer.
 3. Bump one module at a time when several are pinned to the same ref — it keeps the blame surface
