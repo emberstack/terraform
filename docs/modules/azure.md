@@ -25,7 +25,7 @@ lacks. Keep new inputs shaped the AVM way.
 | Module | What it does |
 |---|---|
 | [`azure-ptn-authorization-roledefinition-collection`](../../src/modules/azure-ptn-authorization-roledefinition-collection/) | Many role definitions from one map |
-| [`azure-ptn-compute-virtualmachine-fqdn`](../../src/modules/azure-ptn-compute-virtualmachine-fqdn/) | Windows VM in-guest primary DNS suffix set via CustomScriptExtension with a deferred reboot, so the guest FQDN matches its public DNS name |
+| [`azure-ptn-compute-virtualmachine-windows-fqdn`](../../src/modules/azure-ptn-compute-virtualmachine-windows-fqdn/) | Windows VM in-guest primary DNS suffix set via CustomScriptExtension with a deferred reboot, so the guest FQDN matches its public DNS name |
 | [`azure-ptn-network-dnszone-records`](../../src/modules/azure-ptn-network-dnszone-records/) | A, AAAA, CAA, CNAME, MX, NS, PTR, SRV and TXT records in an existing public zone |
 | [`azure-ptn-network-privatednszone-records`](../../src/modules/azure-ptn-network-privatednszone-records/) | A, AAAA, CNAME, MX, PTR, SRV and TXT records in an existing private zone |
 | [`azure-ptn-network-privatednszone-vnet-links`](../../src/modules/azure-ptn-network-privatednszone-vnet-links/) | Virtual network links across many zones |
