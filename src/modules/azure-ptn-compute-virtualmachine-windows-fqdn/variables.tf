@@ -31,3 +31,10 @@ variable "tags" {
   default     = {}
   nullable    = false
 }
+
+variable "reboot" {
+  description = "Reboot the VM (via an ARM restart) after writing the suffix so it takes effect, and block the apply until the restart completes and the VM is running again. When it's false the module only writes the registry and the suffix stays inactive until the VM is rebooted by other means."
+  type        = bool
+  default     = true
+  nullable    = false
+}

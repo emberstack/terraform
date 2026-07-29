@@ -1,42 +1,23 @@
 # =============================================================================
-# WINDOWS VM PRIMARY DNS SUFFIX + REBOOT
+# WINDOWS VM PRIMARY DNS SUFFIX (Microsoft.Compute/virtualMachines/extensions)
 # =============================================================================
-# Sets the Windows *primary DNS suffix* via a CustomScriptExtension, then
-# reboots, so the machine's own FQDN matches the public DNS name of its IP.
-# Without it the guest FQDN stays the bare hostname, and anything that issues a
-# ticket for the name you typed (Entra RDP being the motivating case) fails
-# because the two names differ.
-#
-# The public IP and its DNS label are the CALLER's to create and attach - this
-# module only touches the guest. provision_after_extensions holds the suffix
-# step (and its reboot) until the named extensions finish, so it cannot land
-# mid Entra-join. That is a stronger guarantee than depends_on, which only
-# orders the ARM calls.
+# Sets the guest primary DNS suffix via a CustomScriptExtension, then applies it
+# with an ARM restart. The restart (not an in-guest `shutdown`) is deliberate: an
+# in-guest reboot is invisible to ARM, so Terraform can't wait on it; azapi blocks
+# on the restart LRO until the VM is running again.
 # =============================================================================
 
 locals {
-  # Deferred so the extension reports success to Azure before the box goes down.
-  reboot_delay_seconds = 60
-
-  # Written to HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters - the
-  # same keys the Computer Name dialog writes. SyncDomainWithMembership=0
-  # mirrors unticking "Change primary DNS suffix when domain membership
-  # changes". Idempotent: once the suffix is in place the script exits without
-  # rebooting.
+  # HKLM\...\Tcpip\Parameters - the keys the Computer Name dialog writes. The
+  # restart below applies them (the value is read at boot, however triggered).
   set_dns_suffix_script = <<-PS
     $ErrorActionPreference = 'Stop'
     $suffix = '${var.dns_suffix}'
     $key    = 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
-    $current = (Get-ItemProperty -Path $key -Name 'NV Domain' -ErrorAction SilentlyContinue).'NV Domain'
-    if ($current -eq $suffix) {
-      Write-Output "Primary DNS suffix already '$suffix' - nothing to do."
-      exit 0
-    }
     Set-ItemProperty -Path $key -Name 'Domain'                   -Value $suffix -Type String
     Set-ItemProperty -Path $key -Name 'NV Domain'                -Value $suffix -Type String
     Set-ItemProperty -Path $key -Name 'SyncDomainWithMembership' -Value 0       -Type DWord
-    Write-Output "Primary DNS suffix set to '$suffix' (was '$current'). Rebooting in ${local.reboot_delay_seconds}s."
-    shutdown /r /t ${local.reboot_delay_seconds} /c "Applying primary DNS suffix"
+    Write-Output "Primary DNS suffix set to '$suffix'. Reboot required to take effect."
     exit 0
   PS
 }
@@ -51,9 +32,34 @@ resource "azurerm_virtual_machine_extension" "dns_suffix" {
   provision_after_extensions = var.provision_after_extensions
   tags                       = var.tags
 
-  # No -ExecutionPolicy flag: execution policy governs script *files*, not the
-  # inline script that -EncodedCommand runs, so it would be a no-op here.
+  # -ExecutionPolicy is omitted: it governs script files, not the inline
+  # -EncodedCommand, so it would be a no-op here.
   settings = jsonencode({
     commandToExecute = "powershell.exe -NoProfile -EncodedCommand ${textencodebase64(local.set_dns_suffix_script, "UTF-16LE")}"
   })
+}
+
+# -----------------------------------------------------------------------------
+# Apply the suffix with an ARM restart (blocks until the VM is running again)
+# -----------------------------------------------------------------------------
+# replace_triggered_by keys on .settings so the restart re-fires only when the
+# suffix changes - not on tags/handler changes; the action is otherwise inert.
+
+resource "azapi_resource_action" "reboot" {
+  count = var.reboot ? 1 : 0
+
+  type        = "Microsoft.Compute/virtualMachines@2024-07-01"
+  resource_id = var.virtual_machine_id
+  action      = "restart"
+  method      = "POST"
+
+  timeouts {
+    create = "15m"
+  }
+
+  lifecycle {
+    replace_triggered_by = [azurerm_virtual_machine_extension.dns_suffix.settings]
+  }
+
+  depends_on = [azurerm_virtual_machine_extension.dns_suffix]
 }
