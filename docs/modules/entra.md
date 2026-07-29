@@ -10,6 +10,7 @@ Modules on the `hashicorp/azuread` provider.
 | [`entra-res-administrativeunit`](../../src/modules/entra-res-administrativeunit/) | Administrative unit and AU-scoped directory role assignments (+ [`modules/member`](#member-submodules)) |
 | [`entra-ptn-group-collection`](../../src/modules/entra-ptn-group-collection/) | Many groups from one map — delegates to `entra-res-group` |
 | [`entra-ptn-group-memberships`](../../src/modules/entra-ptn-group-memberships/) | Arbitrary (group, principal) pairs, for membership managed independently of any group |
+| [`entra-ptn-pim-group`](../../src/modules/entra-ptn-pim-group/) | Brings an existing group under PIM — role management policies, eligibility and active assignment schedules |
 
 `entra-ptn-group-collection` is the only module in the repository with an
 [`examples/basic/`](../../src/modules/entra-ptn-group-collection/examples/basic/).
