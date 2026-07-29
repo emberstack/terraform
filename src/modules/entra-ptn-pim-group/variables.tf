@@ -281,11 +281,17 @@ variable "eligibility" {
   description = <<-EOT
     Eligibility schedules, keyed by a stable caller-chosen identifier.
 
-    `principal_object_id` may be a user **or a group**. A group as an eligible
-    principal is how a roster group is bound to a role-assignable target: Entra
-    forbids a group as an *active* member of a role-assignable group but permits
-    it as an *eligible* one, and activation resolves per user rather than for the
-    whole group.
+    `principal` is **either** an Entra object ID (UUID) **or** a user principal
+    name, auto-detected by format. UPNs are resolved through the `azuread_user`
+    data source at plan time, so principal *values* must be known at plan time —
+    pass an object ID when one is produced by another resource. App-only callers
+    need `User.Read.All` for the UPN lookup; object IDs need no directory read.
+
+    A principal may be a user **or a group**, and a group has no UPN, so groups
+    are always given as object IDs. A group as an eligible principal is how a
+    roster group is bound to a role-assignable target: Entra forbids a group as
+    an *active* member of a role-assignable group but permits it as an *eligible*
+    one, and activation resolves per user rather than for the whole group.
 
     Omit `duration` for permanent eligibility. `expiration_date` is deliberately
     not exposed — it is a third way to express what `duration` already says, and
@@ -294,13 +300,13 @@ variable "eligibility" {
   EOT
 
   type = map(object({
-    principal_object_id = string
-    assignment_type     = string
-    justification       = optional(string)
-    ticket_number       = optional(string)
-    ticket_system       = optional(string)
-    start_date          = optional(string)
-    duration            = optional(string)
+    principal       = string
+    assignment_type = string
+    justification   = optional(string)
+    ticket_number   = optional(string)
+    ticket_system   = optional(string)
+    start_date      = optional(string)
+    duration        = optional(string)
   }))
 
   default  = {}
@@ -314,9 +320,10 @@ variable "eligibility" {
   validation {
     condition = alltrue([
       for s in values(var.eligibility) :
-      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", s.principal_object_id))
+      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", s.principal)) ||
+      can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", s.principal))
     ])
-    error_message = "eligibility[*].principal_object_id must be a valid Entra object ID (UUID). Pass an object ID, not a UPN — a group is a legal principal here."
+    error_message = "eligibility[*].principal must be either a valid Entra object ID (UUID) or a user principal name (UPN, e.g. user@example.com). A group principal has no UPN — pass its object ID."
   }
 
   # Every component of an ISO8601 duration is optional, so a naive pattern also
@@ -362,18 +369,21 @@ variable "assignments" {
   description = <<-EOT
     Active assignment schedules, keyed by a stable caller-chosen identifier.
 
+    `principal` accepts an object ID or a UPN on the same terms as
+    `eligibility` — see that variable for the plan-time and permission caveats.
+
     Omit `duration` for a permanent active assignment. See `eligibility` for why
     `expiration_date` is not exposed.
   EOT
 
   type = map(object({
-    principal_object_id = string
-    assignment_type     = string
-    justification       = optional(string)
-    ticket_number       = optional(string)
-    ticket_system       = optional(string)
-    start_date          = optional(string)
-    duration            = optional(string)
+    principal       = string
+    assignment_type = string
+    justification   = optional(string)
+    ticket_number   = optional(string)
+    ticket_system   = optional(string)
+    start_date      = optional(string)
+    duration        = optional(string)
   }))
 
   default  = {}
@@ -387,9 +397,10 @@ variable "assignments" {
   validation {
     condition = alltrue([
       for s in values(var.assignments) :
-      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", s.principal_object_id))
+      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", s.principal)) ||
+      can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", s.principal))
     ])
-    error_message = "assignments[*].principal_object_id must be a valid Entra object ID (UUID). Pass an object ID, not a UPN."
+    error_message = "assignments[*].principal must be either a valid Entra object ID (UUID) or a user principal name (UPN, e.g. user@example.com). A group principal has no UPN — pass its object ID."
   }
 
   validation {

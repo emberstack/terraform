@@ -45,7 +45,7 @@ module "operator_pim" {
 
   eligibility = {
     roster = {
-      principal_object_id = "11111111-1111-1111-1111-111111111111"
+      principal       = "11111111-1111-1111-1111-111111111111"
       assignment_type     = "member"
     }
   }
@@ -90,12 +90,34 @@ This prevents *writing* a conflicting pair; it cannot guarantee the adopted poli
 one side set. Switching a live policy from `conditional_access` to `mfa` does not necessarily clear the
 stored authentication context.
 
-## A group can be the eligible principal
+## Principals: object ID or UPN
 
-`eligibility[*].principal_object_id` accepts a user **or a group**. Entra forbids a group as an
-*active* member of a role-assignable group, but permits it as an *eligible* one — activation then
-resolves per user, and the roster group never becomes an active member. This is how a roster group is
-bound to a role-assignable target without enumerating people twice.
+`principal` on both schedule maps accepts **either** an Entra object ID (UUID) **or** a user
+principal name, auto-detected by format. UPNs are resolved through the `azuread_user` data source,
+following the same routing convention as `entra-res-group`.
+
+```hcl
+eligibility = {
+  alice = { principal = "alice@example.com", assignment_type = "member" }                        # looked up
+  crew  = { principal = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }     # used directly
+}
+```
+
+Two consequences:
+
+- **Values must be known at plan time.** The lookup partitions the maps by value, so a principal
+  produced by another resource makes the partition unknown and Terraform rejects the data source's
+  `for_each`. Pass an object ID in that case. Map *keys* may be anything static.
+- **App-only callers need `User.Read.All`** for the UPN lookup. Object IDs require no directory read,
+  so a caller that only ever passes object IDs needs neither.
+
+### A group can be the principal
+
+A principal may be a user **or a group** — and a group has no UPN, so groups are always given as
+object IDs. Entra forbids a group as an *active* member of a role-assignable group but permits it as
+an *eligible* one; activation then resolves per user, and the roster group never becomes an active
+member. This is how a roster group is bound to a role-assignable target without enumerating people
+twice.
 
 ## Known limitation: `expiration_date` outranks `duration`
 

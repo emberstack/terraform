@@ -30,9 +30,9 @@ run "plans_assignments_and_evaluates_outputs" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     assignments = {
       ops = {
-        principal_object_id = "11111111-1111-1111-1111-111111111111"
-        assignment_type     = "member"
-        duration            = "P30D"
+        principal       = "11111111-1111-1111-1111-111111111111"
+        assignment_type = "member"
+        duration        = "P30D"
       }
     }
   }
@@ -53,8 +53,8 @@ run "plans_eligibility_permanent" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
       crew = {
-        principal_object_id = "22222222-2222-2222-2222-222222222222"
-        assignment_type     = "member"
+        principal       = "22222222-2222-2222-2222-222222222222"
+        assignment_type = "member"
       }
     }
   }
@@ -169,6 +169,44 @@ run "derives_authentication_gate" {
   assert {
     condition     = azuread_group_role_management_policy.this["owner"].activation_rules[0].required_conditional_access_authentication_context == "c1"
     error_message = "method \"conditional_access\" must pass the auth context through"
+  }
+}
+
+# A UPN principal must route through the azuread_user data source; a UUID must
+# bypass it. `override_data` is required rather than optional here: mock_provider
+# generates a short random string for object_id, and the provider's own
+# ValidateDiagFunc on principal_id rejects anything that is not a UUID, so the
+# mocked default fails the resource before any assertion runs. Overriding it also
+# lets the resolved value be asserted exactly instead of merely "not the UPN".
+run "resolves_upn_principal" {
+  command = plan
+
+  override_data {
+    target = data.azuread_user.this["alice@example.com"]
+    values = {
+      object_id = "33333333-3333-3333-3333-333333333333"
+    }
+  }
+
+  variables {
+    group_object_id = "00000000-0000-0000-0000-000000000001"
+    eligibility = {
+      alice = { principal = "alice@example.com", assignment_type = "member" }
+      bob   = { principal = "22222222-2222-2222-2222-222222222222", assignment_type = "member" }
+    }
+  }
+
+  assert {
+    condition     = azuread_privileged_access_group_eligibility_schedule.this["alice"].principal_id == "33333333-3333-3333-3333-333333333333"
+    error_message = "a UPN principal must be resolved through the azuread_user lookup"
+  }
+  assert {
+    condition     = azuread_privileged_access_group_eligibility_schedule.this["bob"].principal_id == "22222222-2222-2222-2222-222222222222"
+    error_message = "a UUID principal must be used directly, not sent to the user lookup"
+  }
+  assert {
+    condition     = length(data.azuread_user.this) == 1
+    error_message = "only the UPN entry should produce a directory lookup"
   }
 }
 
@@ -327,18 +365,18 @@ run "rejects_bad_assignment_type" {
   variables {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
-      crew = { principal_object_id = "11111111-1111-1111-1111-111111111111", assignment_type = "admin" }
+      crew = { principal = "11111111-1111-1111-1111-111111111111", assignment_type = "admin" }
     }
   }
   expect_failures = [var.eligibility]
 }
 
-run "rejects_upn_as_principal" {
+run "rejects_malformed_principal" {
   command = plan
   variables {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
-      crew = { principal_object_id = "alice@example.com", assignment_type = "member" }
+      crew = { principal = "not-a-user", assignment_type = "member" }
     }
   }
   expect_failures = [var.eligibility]
@@ -351,7 +389,7 @@ run "rejects_permanent_eligibility_against_expiring_policy" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     policies        = { member = { eligible_assignments = { expiration = "P90D" } } }
     eligibility = {
-      crew = { principal_object_id = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
+      crew = { principal = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
     }
   }
   expect_failures = [var.eligibility]
@@ -363,7 +401,7 @@ run "rejects_permanent_eligibility_against_required_policy" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     policies        = { member = { eligible_assignments = { expiration = "required" } } }
     eligibility = {
-      crew = { principal_object_id = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
+      crew = { principal = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
     }
   }
   expect_failures = [var.eligibility]
@@ -375,7 +413,7 @@ run "rejects_permanent_assignment_against_expiring_policy" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     policies        = { member = { active_assignments = { expiration = "P90D" } } }
     assignments = {
-      ops = { principal_object_id = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
+      ops = { principal = "11111111-1111-1111-1111-111111111111", assignment_type = "member" }
     }
   }
   expect_failures = [var.assignments]
@@ -387,9 +425,9 @@ run "rejects_bad_duration_format" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
       crew = {
-        principal_object_id = "11111111-1111-1111-1111-111111111111"
-        assignment_type     = "member"
-        duration            = "30 days"
+        principal       = "11111111-1111-1111-1111-111111111111"
+        assignment_type = "member"
+        duration        = "30 days"
       }
     }
   }
@@ -403,9 +441,9 @@ run "rejects_dangling_duration_designator" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
       crew = {
-        principal_object_id = "11111111-1111-1111-1111-111111111111"
-        assignment_type     = "member"
-        duration            = "PT"
+        principal       = "11111111-1111-1111-1111-111111111111"
+        assignment_type = "member"
+        duration        = "PT"
       }
     }
   }
@@ -418,9 +456,9 @@ run "rejects_zero_duration" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
       crew = {
-        principal_object_id = "11111111-1111-1111-1111-111111111111"
-        assignment_type     = "member"
-        duration            = "P0D"
+        principal       = "11111111-1111-1111-1111-111111111111"
+        assignment_type = "member"
+        duration        = "P0D"
       }
     }
   }
@@ -433,9 +471,9 @@ run "rejects_bad_start_date" {
     group_object_id = "00000000-0000-0000-0000-000000000001"
     eligibility = {
       crew = {
-        principal_object_id = "11111111-1111-1111-1111-111111111111"
-        assignment_type     = "member"
-        start_date          = "tomorrow"
+        principal       = "11111111-1111-1111-1111-111111111111"
+        assignment_type = "member"
+        start_date      = "tomorrow"
       }
     }
   }

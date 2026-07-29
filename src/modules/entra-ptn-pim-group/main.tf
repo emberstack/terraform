@@ -243,13 +243,48 @@ resource "azuread_group_role_management_policy" "this" {
 # removes, so instead: if a schedule needs to move to permanent (or to a
 # different duration) after its expiration_date has been populated, replace the
 # resource — `terraform apply -replace=...` on that schedule address.
+#
+# PRINCIPALS — OBJECT ID OR UPN
+# `principal` is auto-routed by format: UUID values are used directly, UPN
+# values are resolved through the `azuread_user` data source. Both schedule maps
+# share one lookup, keyed by the UPN itself.
+#
+# Resource `for_each` is keyed on the input map, NOT on a regex-filtered copy.
+# Filtering by value makes the whole map unknown at plan time as soon as any
+# principal comes from another resource, and Terraform then rejects the for_each
+# outright. Only the data source below is value-derived, so principal *values*
+# must be known at plan time — pass an object ID when one comes from another
+# resource.
+#
+# A group is a legal principal here and has no UPN, so groups are always passed
+# as object IDs. App-only callers additionally need `User.Read.All` for the UPN
+# lookup; object IDs need no directory read at all.
 # =============================================================================
+
+locals {
+  uuid_pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
+  schedule_principal_upns = toset([
+    for s in concat(values(var.eligibility), values(var.assignments)) :
+    s.principal if !can(regex(local.uuid_pattern, s.principal))
+  ])
+}
+
+data "azuread_user" "this" {
+  for_each = local.schedule_principal_upns
+
+  user_principal_name = each.value
+}
 
 resource "azuread_privileged_access_group_eligibility_schedule" "this" {
   for_each = var.eligibility
 
-  group_id        = var.group_object_id
-  principal_id    = each.value.principal_object_id
+  group_id = var.group_object_id
+  principal_id = (
+    can(regex(local.uuid_pattern, each.value.principal))
+    ? each.value.principal
+    : data.azuread_user.this[each.value.principal].object_id
+  )
   assignment_type = each.value.assignment_type
 
   justification = each.value.justification
@@ -266,8 +301,12 @@ resource "azuread_privileged_access_group_eligibility_schedule" "this" {
 resource "azuread_privileged_access_group_assignment_schedule" "this" {
   for_each = var.assignments
 
-  group_id        = var.group_object_id
-  principal_id    = each.value.principal_object_id
+  group_id = var.group_object_id
+  principal_id = (
+    can(regex(local.uuid_pattern, each.value.principal))
+    ? each.value.principal
+    : data.azuread_user.this[each.value.principal].object_id
+  )
   assignment_type = each.value.assignment_type
 
   justification = each.value.justification
