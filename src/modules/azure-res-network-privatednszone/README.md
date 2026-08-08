@@ -102,7 +102,7 @@ carries a description, and CI enforces that.
 
 ## Submodules
 
-- [`modules/vnet-link`](./modules/vnet-link/) — **one** `azurerm_private_dns_zone_virtual_network_link`, managed as its own deployable unit.
+- [`modules/vnet-link`](./modules/vnet-link/) — **one** `Microsoft.Network/privateDnsZones/virtualNetworkLinks`, managed as its own deployable unit.
 
 This module never calls the submodule itself. Links are always managed separately from the zone, so adding or removing one never touches zone state.
 
@@ -134,7 +134,7 @@ module "link" {
 ## Related modules
 
 - [`azure-ptn-network-privatednszone-records`](../azure-ptn-network-privatednszone-records/) — manage private DNS records (A, AAAA, CNAME, MX, PTR, SRV, TXT) against any existing zone. NS and CAA are not supported by Azure private DNS.
-- [`azure-ptn-network-privatednszone-vnet-links`](../azure-ptn-network-privatednszone-vnet-links/) — manage `azurerm_private_dns_zone_virtual_network_link` resources. Matrix-style: each entry can target a different zone and vnet. Supports both single-zone-multiple-vnets and many-zones-many-vnets in one apply.
+- [`azure-ptn-network-privatednszone-vnet-links`](../azure-ptn-network-privatednszone-vnet-links/) — manage `Microsoft.Network/privateDnsZones/virtualNetworkLinks` resources. Matrix-style: each entry can target a different zone and vnet. Supports both single-zone-multiple-vnets and many-zones-many-vnets in one apply.
 
 Both pattern modules can be used standalone against any existing zone (this module's output, an AVM-managed zone, or a manually-created one).
 
@@ -147,7 +147,49 @@ Both pattern modules can be used standalone against any existing zone (this modu
 
 ## Notes
 
+- **This module is `azapi`-only.** It declares `azapi` and `random`, not `azurerm`. The subscription comes
+  from the configured `azapi` provider — `resource_group_name` stays a plain name, and the parent resource
+  ID is assembled from the two.
+- **Role definition names are resolved by a subscription-scope lookup.** AzAPI has no equivalent of
+  azurerm's `role_definition_name`, so a `Microsoft.Authorization/roleDefinitions` list is read once when
+  `role_assignments` is non-empty. A value that is already a resource ID bypasses the lookup.
+- **SOA is a child resource.** ARM models the zone's SOA as a `privateDnsZones/SOA` record named `@`, not
+  as part of the zone, so `soa_record` produces a second resource rather than an inline block.
 - **Private zones are global.** No `location` input; Azure tracks zones at the subscription level, not per-region.
 - **No NS or CAA records.** Azure private DNS does not support these record types — `azure-ptn-network-privatednszone-records` rejects them at validation time.
-- **Cross-subscription links.** `azure-ptn-network-privatednszone-vnet-links` uses the default `azurerm` provider for the link resource. The link itself lives in the zone's subscription, so cross-subscription links work as long as the deploying principal can `join/action` the target vnet (which lives in a potentially different subscription).
+- **Cross-subscription links.** `azure-ptn-network-privatednszone-vnet-links` uses the default `azapi` provider for the link resource. The link itself lives in the zone's subscription, so cross-subscription links work as long as the deploying principal can `join/action` the target vnet (which lives in a potentially different subscription).
 - **RG creation is out of scope.** Place a sibling `resource-group/` leaf upstream — same convention as the AVM modules in the consuming workspace's live tree.
+
+## Migrating from the `azurerm` implementation
+
+Earlier versions managed the same resources through `azurerm`. Resource *types* changed, so `moved`
+blocks do not apply — Terraform reads the new addresses as unrelated resources and plans a
+destroy-and-recreate. Adopt them instead, per unit:
+
+```bash
+terraform state pull > backup.tfstate
+terraform state rm 'azurerm_private_dns_zone.this'
+terraform state rm 'azurerm_role_assignment.this["<key>"]'
+terraform import 'azapi_resource.this' '<zone-resource-id>'
+terraform import 'random_uuid.role_assignment_name["<key>"]' '<existing-assignment-guid>'
+terraform import 'azapi_resource.role_assignments["<key>"]' '<assignment-resource-id>'
+terraform plan   # expect: No changes
+```
+
+Importing `random_uuid` with the existing assignment GUID is the step that matters. `name` falls back
+to that UUID, so the adopted assignment keeps its identity; skip it and a fresh UUID is generated and
+the assignment is replaced — a brief RBAC gap on apply. Supplying `role_assignments[*].name` explicitly
+achieves the same thing if you would rather pin it in configuration.
+
+Zones that set `soa_record` gain a second resource (`azapi_resource.soa[0]`) with nothing in state
+behind it. Import it from `<zone-resource-id>/SOA/@` before planning.
+
+[`modules/vnet-link`](./modules/vnet-link/) moved in the same release and needs the same treatment,
+one link at a time:
+
+```bash
+terraform state rm 'module.<link>.azurerm_private_dns_zone_virtual_network_link.this'
+terraform import 'module.<link>.azapi_resource.this' '<zone-resource-id>/virtualNetworkLinks/<link-name>'
+```
+
+The submodule's inputs are unchanged, so no caller configuration moves with it.

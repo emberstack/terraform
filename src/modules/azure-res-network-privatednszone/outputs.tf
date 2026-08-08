@@ -1,11 +1,11 @@
 output "resource_id" {
   description = "Resource ID of the private DNS zone."
-  value       = azurerm_private_dns_zone.this.id
+  value       = azapi_resource.this.id
 }
 
 output "name" {
   description = "Name of the private DNS zone."
-  value       = azurerm_private_dns_zone.this.name
+  value       = azapi_resource.this.name
 }
 
 output "resource_group_name" {
@@ -16,9 +16,9 @@ output "resource_group_name" {
 output "role_assignments" {
   description = "Map of zone-scope role assignments keyed by the input map key."
   value = {
-    for k, v in azurerm_role_assignment.this : k => {
+    for k, v in azapi_resource.role_assignments : k => {
       id           = v.id
-      principal_id = v.principal_id
+      principal_id = var.role_assignments[k].principal_id
     }
   }
 }

@@ -1,24 +1,32 @@
 # =============================================================================
 # PRIVATE DNS ZONE VIRTUAL NETWORK LINKS
 # =============================================================================
-# Manages `azurerm_private_dns_zone_virtual_network_link` resources. Each entry
-# in `var.private_dns_zone_vnet_links` becomes one link.
-#
-# Each entry can target a different zone — supports both single-zone (one
-# leaf per zone, multiple vnets) and matrix scenarios (one leaf, many zones ×
-# many vnets) without changing the module shape.
+# Each entry carries its own `private_dns_zone_resource_id`, used directly as
+# the link's `parent_id`. That is what lets one call span many zones — the
+# many-zones × many-vnets matrix needs no special handling.
 #
 # The deploying principal must have write access to each link's zone RG.
 # =============================================================================
 
-resource "azurerm_private_dns_zone_virtual_network_link" "this" {
+resource "azapi_resource" "this" {
   for_each = var.private_dns_zone_vnet_links
 
-  name                  = each.value.link_name
-  resource_group_name   = split("/", each.value.private_dns_zone_resource_id)[4]
-  private_dns_zone_name = split("/", each.value.private_dns_zone_resource_id)[8]
-  virtual_network_id    = each.value.virtual_network_resource_id
-  registration_enabled  = each.value.registration_enabled
-  resolution_policy     = each.value.resolution_policy
-  tags                  = merge(var.tags, each.value.tags)
+  location  = "global"
+  name      = each.value.link_name
+  parent_id = each.value.private_dns_zone_resource_id
+  type      = "Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01"
+  body = {
+    properties = {
+      registrationEnabled = each.value.registration_enabled
+      resolutionPolicy    = each.value.resolution_policy
+      virtualNetwork = {
+        id = each.value.virtual_network_resource_id
+      }
+    }
+  }
+  # Azure sets `resolutionPolicy` itself on privatelink zones, so a null input
+  # has to mean "leave it alone" rather than "clear it". Without this every link
+  # that sets no policy carries a permanent `"Default" -> null` diff.
+  ignore_null_property = true
+  tags                 = merge(var.tags, each.value.tags)
 }

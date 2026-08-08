@@ -6,8 +6,13 @@ variable "name" {
 
 variable "private_dns_zone_resource_id" {
   type        = string
-  description = "ARM resource ID of the private DNS zone."
+  description = "ARM resource ID of the private DNS zone. Used directly as the link's `parent_id`."
   nullable    = false
+
+  validation {
+    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.network/privatednszones/[^/]+$", var.private_dns_zone_resource_id))
+    error_message = "private_dns_zone_resource_id must be an ARM resource ID of an Azure private DNS zone."
+  }
 }
 
 variable "virtual_network_resource_id" {
@@ -26,7 +31,12 @@ variable "registration_enabled" {
 variable "resolution_policy" {
   type        = string
   default     = null
-  description = "`Default` or `NxDomainRedirect`. Only applicable to privatelink zones. Leave null for non-privatelink zones."
+  description = "`Default` or `NxDomainRedirect`. Only applicable to privatelink zones. Leave null for non-privatelink zones — the property is then omitted from the request entirely."
+
+  validation {
+    condition     = var.resolution_policy == null || contains(["Default", "NxDomainRedirect"], var.resolution_policy)
+    error_message = "resolution_policy must be null, `Default`, or `NxDomainRedirect`."
+  }
 }
 
 variable "tags" {

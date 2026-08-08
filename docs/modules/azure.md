@@ -1,6 +1,9 @@
 # Azure
 
-Modules on the `hashicorp/azurerm` provider.
+Modules on the `hashicorp/azurerm` provider, except the private-DNS-zone family — the zone module, its
+`vnet-link` submodule, and both `privatednszone` pattern modules are on `Azure/azapi`. The rest are
+being moved the same way; each carries a migration section when it moves, because the resource type
+changes and `moved` blocks cannot cross that.
 
 Input shapes mirror [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) where an
 AVM equivalent exists — `name`, `resource_group_name`, `tags`, `role_assignments` — and add what AVM
@@ -129,3 +132,32 @@ A plan that still shows a destroy means the import did not land; do not apply it
 
 The azurerm major cap stays in place for now. This module no longer blocks it, but the other
 azurerm modules have not been checked against v5.
+
+## Migrating the private-DNS-zone family to AzAPI
+
+The zone module, `modules/vnet-link`, and both `privatednszone` pattern modules moved from `azurerm`
+to `Azure/azapi`. Inputs and outputs are unchanged; the resource *types* are not, so `moved` blocks do
+not apply — Terraform reads the new addresses as unrelated resources and plans a destroy-and-recreate.
+Adopt them instead. Per-module recipes are in
+[`azure-res-network-privatednszone`'s README](../../src/modules/azure-res-network-privatednszone/README.md);
+the shape is the same everywhere:
+
+```bash
+terraform state pull > backup.tfstate
+terraform state rm '<old azurerm address>'
+terraform import '<new azapi address>' '<ARM resource ID>'
+terraform plan   # expect: No changes
+```
+
+Three things that are easy to get wrong:
+
+- **Role assignments** on the zone module must have their `random_uuid` imported with the *existing*
+  assignment GUID, or a fresh UUID is generated and the assignment is replaced — a brief loss of access
+  on apply.
+- **A zone with no role assignments** lands on an outputs-only plan rather than *no changes*: `import`
+  persists an empty `for_each` output as null instead of `{}`. The settling apply reports
+  `0 added, 0 changed, 0 destroyed`.
+- **Record-set tags live in `properties.metadata`**, not resource `tags`. AzAPI does not paper over
+  that the way the azurerm provider did.
+
+A plan that still shows a destroy means an import did not land. Do not apply it.
