@@ -2,20 +2,27 @@
 # AZURE MANAGED REDIS (Microsoft.Cache/redisEnterprise)
 # =============================================================================
 # Mirrors the AVM `Azure/avm-res-cache-redisenterprise/azurerm` module's input
-# surface as closely as possible, but uses the `azurerm` provider (not `azapi`)
-# and exposes a few features the AVM module does not yet support:
+# surface as closely as possible, and exposes a few features AVM does not:
 #   - access_keys_authentication_enabled
 #   - persistence_append_only_file_backup_frequency
 #   - persistence_redis_database_backup_frequency
 #   - geo_replication_group_name
 #   - cluster-level diagnostic_settings (built-in, not a sidecar)
+#
+# ARM models the cluster and its default database as two resources, so the
+# `default_database` inputs land on a separate child rather than inline. The
+# same is true of a private endpoint's DNS zone group. Application security
+# group associations are the opposite case: ARM keeps them in the private
+# endpoint body, so they are not a resource of their own.
+#
+# `kind` (v2) and `redundancyMode` are server-assigned and deliberately not sent.
 # =============================================================================
 
-locals {
-  # parent_id is the RG resource ID; azurerm needs the name + location.
-  resource_group_name = element(split("/", var.parent_id), 4)
+data "azapi_client_config" "current" {}
 
-  # Identity assembly
+locals {
+  subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+
   has_user_assigned   = length(var.managed_identities.user_assigned_resource_ids) > 0
   has_system_assigned = var.managed_identities.system_assigned
   identity_type = (
@@ -24,123 +31,203 @@ locals {
     local.has_user_assigned ? "UserAssigned" :
     null
   )
+
+  # ARM spells these lower-camel, unlike the PascalCase used for the resource
+  # identity `type` right above. Accept either from the caller.
+  customer_managed_key_identity_type = (
+    var.customer_managed_key_encryption == null ? null :
+    lower(var.customer_managed_key_encryption.identity_type) == "systemassignedidentity"
+    ? "systemAssignedIdentity" : "userAssignedIdentity"
+  )
+
+  role_definition_name_to_resource_id = length(local.all_role_assignments) > 0 ? {
+    for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
+  } : {}
+
+  # An entry that is already a resource ID falls through the lookup untouched.
+  role_definition_resource_ids = {
+    for k, v in local.all_role_assignments : k => lookup(
+      local.role_definition_name_to_resource_id,
+      v.role_definition_id_or_name,
+      v.role_definition_id_or_name
+    )
+  }
+
+  # Per-PE role assignments, flattened across all (pe, ra) pairs.
+  private_endpoint_role_assignments = merge([
+    for pe_k, pe_v in var.private_endpoints : {
+      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
+    }
+  ]...)
+
+  # One lookup covers both scopes; the keyspaces cannot collide because the
+  # cluster-scoped keys come from a different input map.
+  all_role_assignments = merge(var.role_assignments, local.private_endpoint_role_assignments)
 }
 
 # -----------------------------------------------------------------------------
 # Cluster
 # -----------------------------------------------------------------------------
 
-resource "azurerm_managed_redis" "this" {
-  name                = var.name
-  resource_group_name = local.resource_group_name
-  location            = var.location
-  sku_name            = var.sku_name
-  tags                = var.tags
-
-  high_availability_enabled = var.high_availability == "Enabled"
-  public_network_access     = var.public_network_access
+resource "azapi_resource" "this" {
+  location  = var.location
+  name      = var.name
+  parent_id = var.parent_id
+  type      = "Microsoft.Cache/redisEnterprise@2025-07-01"
+  body = {
+    properties = {
+      encryption = var.customer_managed_key_encryption == null ? {} : {
+        customerManagedKeyEncryption = {
+          keyEncryptionKeyIdentity = {
+            identityType                   = local.customer_managed_key_identity_type
+            userAssignedIdentityResourceId = var.customer_managed_key_encryption.user_assigned_identity_resource_id
+          }
+          keyEncryptionKeyUrl = var.customer_managed_key_encryption.key_encryption_key_url
+        }
+      }
+      highAvailability    = var.high_availability
+      minimumTlsVersion   = var.minimum_tls_version
+      publicNetworkAccess = var.public_network_access
+    }
+    sku = {
+      name = var.sku_name
+    }
+  }
+  response_export_values = { host_name = "properties.hostName" }
+  tags                   = var.tags
 
   dynamic "identity" {
     for_each = local.identity_type == null ? [] : [local.identity_type]
     content {
       type         = identity.value
-      identity_ids = local.has_user_assigned ? var.managed_identities.user_assigned_resource_ids : null
+      identity_ids = var.managed_identities.user_assigned_resource_ids
     }
   }
+}
 
-  dynamic "customer_managed_key" {
-    for_each = var.customer_managed_key_encryption == null ? [] : [var.customer_managed_key_encryption]
-    content {
-      key_vault_key_id          = customer_managed_key.value.key_encryption_key_url
-      user_assigned_identity_id = customer_managed_key.value.user_assigned_identity_resource_id
-    }
-  }
+# -----------------------------------------------------------------------------
+# Default database
+# -----------------------------------------------------------------------------
+# ARM keeps the database separate from the cluster. `port`, `redisVersion` and
+# `deferUpgrade` are server-assigned and not sent.
 
-  default_database {
-    client_protocol                               = var.enable_non_ssl_port ? "Plaintext" : "Encrypted"
-    clustering_policy                             = var.clustering_policy
-    eviction_policy                               = var.eviction_policy
-    access_keys_authentication_enabled            = var.access_keys_authentication_enabled
-    geo_replication_group_name                    = var.geo_replication_group_name
-    persistence_append_only_file_backup_frequency = var.persistence_append_only_file_backup_frequency
-    persistence_redis_database_backup_frequency   = var.persistence_redis_database_backup_frequency
-
-    dynamic "module" {
-      for_each = var.redis_modules
-      content {
-        name = module.value.name
-        args = module.value.args
+resource "azapi_resource" "database" {
+  name      = "default"
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Cache/redisEnterprise/databases@2025-07-01"
+  body = {
+    properties = {
+      accessKeysAuthentication = var.access_keys_authentication_enabled ? "Enabled" : "Disabled"
+      clientProtocol           = var.enable_non_ssl_port ? "Plaintext" : "Encrypted"
+      clusteringPolicy         = var.clustering_policy
+      evictionPolicy           = var.eviction_policy
+      geoReplication = var.geo_replication_group_name == null ? null : {
+        groupNickname = var.geo_replication_group_name
+      }
+      modules = [for m in var.redis_modules : {
+        args = m.args
+        name = m.name
+      }]
+      port = var.port
+      persistence = {
+        aofEnabled   = var.persistence_append_only_file_backup_frequency != null
+        aofFrequency = var.persistence_append_only_file_backup_frequency
+        rdbEnabled   = var.persistence_redis_database_backup_frequency != null
+        rdbFrequency = var.persistence_redis_database_backup_frequency
       }
     }
   }
+  response_export_values = { port = "properties.port" }
 }
 
 # -----------------------------------------------------------------------------
 # Lock
 # -----------------------------------------------------------------------------
 
-resource "azurerm_management_lock" "this" {
+resource "azapi_resource" "lock" {
   count = var.lock != null ? 1 : 0
 
-  name       = coalesce(var.lock.name, "lock-${var.name}")
-  scope      = azurerm_managed_redis.this.id
-  lock_level = var.lock.kind
-  notes      = var.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
+  name      = coalesce(var.lock.name, "lock-${var.name}")
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Authorization/locks@2020-05-01"
+  body = {
+    properties = {
+      level = var.lock.kind
+      notes = var.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
-# Role assignments (cluster-scoped)
+# Role assignments
 # -----------------------------------------------------------------------------
+# AzAPI has no equivalent of azurerm's `role_definition_name`, so role names are
+# resolved against a subscription-scope listing, as the AVM interfaces module
+# does.
+#
+# Assignment names are random UUIDs. ARM makes the name the resource identity,
+# so deriving it from the principal would let an unknown-at-plan-time principal
+# ID force a replacement. `name` is exposed for callers adopting an existing
+# assignment.
 
-resource "azurerm_role_assignment" "this" {
+data "azapi_resource_list" "role_definitions" {
+  count = length(local.all_role_assignments) > 0 ? 1 : 0
+
+  parent_id = local.subscription_resource_id
+  type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
+  response_export_values = {
+    results = "value[].{id: id, role_name: properties.roleName}"
+  }
+}
+
+resource "random_uuid" "role_assignment_name" {
+  for_each = var.role_assignments
+}
+
+resource "azapi_resource" "role_assignments" {
   for_each = var.role_assignments
 
-  scope                                  = azurerm_managed_redis.this.id
-  principal_id                           = each.value.principal_id
-  role_definition_name                   = startswith(each.value.role_definition_id_or_name, "/") ? null : each.value.role_definition_id_or_name
-  role_definition_id                     = startswith(each.value.role_definition_id_or_name, "/") ? each.value.role_definition_id_or_name : null
-  description                            = each.value.description
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
-  principal_type                         = each.value.principal_type
+  name      = coalesce(each.value.name, random_uuid.role_assignment_name[each.key].result)
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  body = {
+    properties = {
+      condition                          = each.value.condition
+      conditionVersion                   = each.value.condition_version
+      delegatedManagedIdentityResourceId = each.value.delegated_managed_identity_resource_id
+      description                        = each.value.description
+      principalId                        = each.value.principal_id
+      principalType                      = each.value.principal_type
+      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
 # Diagnostic settings (cluster-scoped)
 # -----------------------------------------------------------------------------
+# `Microsoft.Insights/diagnosticSettings` has never shipped a stable API version;
+# 2021-05-01-preview is the newest and what AVM uses.
 
-resource "azurerm_monitor_diagnostic_setting" "this" {
+resource "azapi_resource" "diagnostic_settings" {
   for_each = var.diagnostic_settings
 
-  name                           = coalesce(each.value.name, each.key)
-  target_resource_id             = azurerm_managed_redis.this.id
-  log_analytics_workspace_id     = each.value.workspace_resource_id
-  log_analytics_destination_type = each.value.workspace_resource_id == null ? null : each.value.log_analytics_destination_type
-  storage_account_id             = each.value.storage_account_resource_id
-  eventhub_authorization_rule_id = each.value.event_hub_authorization_rule_resource_id
-  eventhub_name                  = each.value.event_hub_name
-  partner_solution_id            = each.value.marketplace_partner_resource_id
-
-  dynamic "enabled_log" {
-    for_each = each.value.log_categories
-    content {
-      category = enabled_log.value
-    }
-  }
-
-  dynamic "enabled_log" {
-    for_each = each.value.log_groups
-    content {
-      category_group = enabled_log.value
-    }
-  }
-
-  dynamic "enabled_metric" {
-    for_each = each.value.metric_categories
-    content {
-      category = enabled_metric.value
+  name      = coalesce(each.value.name, each.key)
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
+  body = {
+    properties = {
+      eventHubAuthorizationRuleId = each.value.event_hub_authorization_rule_resource_id
+      eventHubName                = each.value.event_hub_name
+      logAnalyticsDestinationType = each.value.workspace_resource_id == null ? null : each.value.log_analytics_destination_type
+      logs = concat(
+        [for category in each.value.log_categories : { category = category, enabled = true }],
+        [for group in each.value.log_groups : { categoryGroup = group, enabled = true }],
+      )
+      marketplacePartnerId = each.value.marketplace_partner_resource_id
+      metrics              = [for category in each.value.metric_categories : { category = category, enabled = true }]
+      storageAccountId     = each.value.storage_account_resource_id
+      workspaceId          = each.value.workspace_resource_id
     }
   }
 }
@@ -148,93 +235,109 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
 # -----------------------------------------------------------------------------
 # Private endpoints
 # -----------------------------------------------------------------------------
+# `applicationSecurityGroups` live in the private endpoint body — ARM has no
+# separate association resource for them.
 
-resource "azurerm_private_endpoint" "this" {
+resource "azapi_resource" "private_endpoint" {
   for_each = var.private_endpoints
 
-  name                          = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  location                      = coalesce(each.value.location, var.location)
-  resource_group_name           = coalesce(each.value.resource_group_name, local.resource_group_name)
-  subnet_id                     = each.value.subnet_resource_id
-  custom_network_interface_name = each.value.network_interface_name
-  tags                          = each.value.tags
-
-  private_service_connection {
-    name                           = coalesce(each.value.private_service_connection_name, "${var.name}-psc-${each.key}")
-    private_connection_resource_id = azurerm_managed_redis.this.id
-    subresource_names              = [each.value.subresource_name]
-    is_manual_connection           = false
-  }
-
-  dynamic "private_dns_zone_group" {
-    for_each = var.private_endpoints_manage_dns_zone_group && length(each.value.private_dns_zone_resource_ids) > 0 ? [1] : []
-    content {
-      name                 = each.value.private_dns_zone_group_name
-      private_dns_zone_ids = each.value.private_dns_zone_resource_ids
-    }
-  }
-
-  dynamic "ip_configuration" {
-    for_each = each.value.ip_configurations
-    content {
-      name               = ip_configuration.value.name
-      private_ip_address = ip_configuration.value.private_ip_address
-      subresource_name   = coalesce(ip_configuration.value.subresource_name, each.value.subresource_name)
-      member_name        = ip_configuration.value.member_name
-    }
-  }
-}
-
-# Per-PE locks
-resource "azurerm_management_lock" "private_endpoint" {
-  for_each = { for k, v in var.private_endpoints : k => v if v.lock != null }
-
-  name       = coalesce(each.value.lock.name, "lock-${var.name}-pe-${each.key}")
-  scope      = azurerm_private_endpoint.this[each.key].id
-  lock_level = each.value.lock.kind
-  notes      = each.value.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
-}
-
-# Per-PE role assignments — flattened across all (pe, ra) pairs.
-locals {
-  private_endpoint_role_assignments = merge([
-    for pe_k, pe_v in var.private_endpoints : {
-      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
-    }
-  ]...)
-}
-
-resource "azurerm_role_assignment" "private_endpoint" {
-  for_each = local.private_endpoint_role_assignments
-
-  scope                                  = azurerm_private_endpoint.this[each.value.pe_key].id
-  principal_id                           = each.value.principal_id
-  role_definition_name                   = startswith(each.value.role_definition_id_or_name, "/") ? null : each.value.role_definition_id_or_name
-  role_definition_id                     = startswith(each.value.role_definition_id_or_name, "/") ? each.value.role_definition_id_or_name : null
-  description                            = each.value.description
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
-  principal_type                         = each.value.principal_type
-}
-
-# Per-PE application security group associations — flattened.
-locals {
-  private_endpoint_asg_associations = merge([
-    for pe_k, pe_v in var.private_endpoints : {
-      for asg_k, asg_v in pe_v.application_security_group_associations : "${pe_k}-${asg_k}" => {
-        pe_key = pe_k
-        asg_id = asg_v
+  location  = coalesce(each.value.location, var.location)
+  name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
+  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.subscription_resource_id}/resourceGroups/${each.value.resource_group_name}"
+  type      = "Microsoft.Network/privateEndpoints@2025-07-01"
+  body = {
+    properties = {
+      applicationSecurityGroups = [
+        for asg_id in values(each.value.application_security_group_associations) : { id = asg_id }
+      ]
+      customNetworkInterfaceName = each.value.network_interface_name
+      ipConfigurations = [for ip in values(each.value.ip_configurations) : {
+        name = ip.name
+        properties = {
+          groupId          = coalesce(ip.subresource_name, each.value.subresource_name)
+          memberName       = ip.member_name
+          privateIPAddress = ip.private_ip_address
+        }
+      }]
+      privateLinkServiceConnections = [{
+        name = coalesce(each.value.private_service_connection_name, "${var.name}-psc-${each.key}")
+        properties = {
+          groupIds             = [each.value.subresource_name]
+          privateLinkServiceId = azapi_resource.this.id
+        }
+      }]
+      subnet = {
+        id = each.value.subnet_resource_id
       }
     }
-  ]...)
+  }
+  # ARM returns "" for an unset customNetworkInterfaceName, which would diff
+  # against the null this sends.
+  ignore_null_property = true
+  response_export_values = {
+    custom_dns_configs = "properties.customDnsConfigs"
+    network_interfaces = "properties.networkInterfaces"
+  }
+  tags = each.value.tags
 }
 
-resource "azurerm_private_endpoint_application_security_group_association" "private_endpoint" {
-  for_each = local.private_endpoint_asg_associations
+# ARM models the DNS zone group as a child of the private endpoint. Each config
+# is named after its zone, matching what the portal and azurerm produce.
+resource "azapi_resource" "private_endpoint_dns_zone_group" {
+  for_each = {
+    for k, v in var.private_endpoints : k => v
+    if var.private_endpoints_manage_dns_zone_group && length(v.private_dns_zone_resource_ids) > 0
+  }
 
-  private_endpoint_id           = azurerm_private_endpoint.this[each.value.pe_key].id
-  application_security_group_id = each.value.asg_id
+  name      = each.value.private_dns_zone_group_name
+  parent_id = azapi_resource.private_endpoint[each.key].id
+  type      = "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-07-01"
+  body = {
+    properties = {
+      privateDnsZoneConfigs = [for zone_id in each.value.private_dns_zone_resource_ids : {
+        name = basename(zone_id)
+        properties = {
+          privateDnsZoneId = zone_id
+        }
+      }]
+    }
+  }
+  response_export_values = { record_sets = "properties.privateDnsZoneConfigs[].recordSets[]" }
 }
 
+resource "azapi_resource" "private_endpoint_lock" {
+  for_each = { for k, v in var.private_endpoints : k => v if v.lock != null }
+
+  name      = coalesce(each.value.lock.name, "lock-${var.name}-pe-${each.key}")
+  parent_id = azapi_resource.private_endpoint[each.key].id
+  type      = "Microsoft.Authorization/locks@2020-05-01"
+  body = {
+    properties = {
+      level = each.value.lock.kind
+      notes = each.value.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
+    }
+  }
+}
+
+resource "random_uuid" "private_endpoint_role_assignment_name" {
+  for_each = local.private_endpoint_role_assignments
+}
+
+resource "azapi_resource" "private_endpoint_role_assignments" {
+  for_each = local.private_endpoint_role_assignments
+
+  name      = coalesce(each.value.name, random_uuid.private_endpoint_role_assignment_name[each.key].result)
+  parent_id = azapi_resource.private_endpoint[each.value.pe_key].id
+  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  body = {
+    properties = {
+      condition                          = each.value.condition
+      conditionVersion                   = each.value.condition_version
+      delegatedManagedIdentityResourceId = each.value.delegated_managed_identity_resource_id
+      description                        = each.value.description
+      principalId                        = each.value.principal_id
+      principalType                      = each.value.principal_type
+      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+    }
+  }
+}

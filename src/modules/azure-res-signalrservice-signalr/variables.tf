@@ -96,6 +96,7 @@ variable "managed_identities" {
 
 variable "role_assignments" {
   type = map(object({
+    name                                   = optional(string, null)
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
@@ -119,6 +120,7 @@ variable "private_endpoints" {
   type = map(object({
     name = optional(string, null)
     role_assignments = optional(map(object({
+      name                                   = optional(string, null)
       role_definition_id_or_name             = string
       principal_id                           = string
       description                            = optional(string, null)
@@ -337,4 +339,17 @@ variable "network_acl" {
     condition     = var.network_acl == null || contains(["Allow", "Deny"], try(var.network_acl.default_action, "Deny"))
     error_message = "network_acl.default_action must be 'Allow' or 'Deny'."
   }
+}
+
+variable "include_access_keys" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Whether to read the service's access keys and expose them as outputs.
+
+    Off by default: reading them costs an extra `listKeys` call on every plan and needs a wider
+    role than deploying does. With `local_auth_enabled = false` the keys are inert, so most
+    callers never want them.
+  EOT
+  nullable    = false
 }

@@ -8,13 +8,21 @@
 # (`azure-res-cache-redis`, etc.). The upstream AVM module
 # `Azure/avm-res-signalrservice-signalr/azurerm` is currently *Proposed*
 # and not yet published — this module fills the gap.
+#
+# ARM keeps `networkACLs` inside the service body, but its per-endpoint rules
+# name private endpoints that in turn point back at the service. That cycle is
+# why the ACL is written separately, after the endpoints exist — see the block
+# further down.
+#
+# Application security group associations are the opposite case: ARM keeps them
+# in the private endpoint body, so they are not a resource of their own.
 # =============================================================================
 
-locals {
-  # parent_id is the RG resource ID; azurerm needs the name.
-  resource_group_name = element(split("/", var.parent_id), 4)
+data "azapi_client_config" "current" {}
 
-  # Identity assembly
+locals {
+  subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+
   has_user_assigned   = length(var.managed_identities.user_assigned_resource_ids) > 0
   has_system_assigned = var.managed_identities.system_assigned
   identity_type = (
@@ -23,136 +31,293 @@ locals {
     local.has_user_assigned ? "UserAssigned" :
     null
   )
+
+  # ARM carries the log toggles twice: as legacy `features` flags ("True"/"False")
+  # and as `resourceLogConfiguration` categories ("true"/"false"). It returns both,
+  # so both are sent — dropping either would let a full-replace write reset it.
+  feature_flags = concat(
+    [{ flag = "ServiceMode", properties = {}, value = var.service_mode }],
+    [{ flag = "EnableConnectivityLogs", properties = {}, value = var.connectivity_logs_enabled ? "True" : "False" }],
+    [{ flag = "EnableMessagingLogs", properties = {}, value = var.messaging_logs_enabled ? "True" : "False" }],
+    [{ flag = "EnableLiveTrace", properties = {}, value = try(var.live_trace.enabled, false) ? "True" : "False" }],
+  )
+
+  resource_log_categories = [
+    { enabled = tostring(var.messaging_logs_enabled), name = "MessagingLogs" },
+    { enabled = tostring(var.connectivity_logs_enabled), name = "ConnectivityLogs" },
+    { enabled = tostring(var.http_request_logs_enabled), name = "HttpRequestLogs" },
+  ]
+
+  role_definition_name_to_resource_id = length(local.all_role_assignments) > 0 ? {
+    for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
+  } : {}
+
+  role_definition_resource_ids = {
+    for k, v in local.all_role_assignments : k => lookup(
+      local.role_definition_name_to_resource_id,
+      v.role_definition_id_or_name,
+      v.role_definition_id_or_name
+    )
+  }
+
+  private_endpoint_role_assignments = merge([
+    for pe_k, pe_v in var.private_endpoints : {
+      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
+    }
+  ]...)
+
+  all_role_assignments = merge(var.role_assignments, local.private_endpoint_role_assignments)
+
+  # ARM returns request types in this order regardless of how they were sent, so
+  # the body is built in the same order to stay diff-stable.
+  request_type_order = ["ServerConnection", "ClientConnection", "RESTAPI", "Trace"]
+
+  # ARM names each ACL entry after the private endpoint *connection*
+  # ("<service>.<guid>"), not the endpoint resource, and generates that name
+  # itself. Map endpoint ID -> connection name from the live service.
+  private_endpoint_connection_names = {
+    for connection in try(data.azapi_resource.private_endpoint_connections[0].output.connections, []) :
+    lower(connection.private_endpoint_id) => connection.name
+  }
 }
 
 # -----------------------------------------------------------------------------
 # SignalR Service
 # -----------------------------------------------------------------------------
 
-resource "azurerm_signalr_service" "this" {
-  name                = var.name
-  resource_group_name = local.resource_group_name
-  location            = var.location
-  tags                = var.tags
-
-  sku {
-    name     = var.sku_name
-    capacity = var.sku_capacity
-  }
-
-  service_mode                             = var.service_mode
-  public_network_access_enabled            = var.public_network_access_enabled
-  local_auth_enabled                       = var.local_auth_enabled
-  aad_auth_enabled                         = var.aad_auth_enabled
-  tls_client_cert_enabled                  = var.tls_client_cert_enabled
-  connectivity_logs_enabled                = var.connectivity_logs_enabled
-  messaging_logs_enabled                   = var.messaging_logs_enabled
-  http_request_logs_enabled                = var.http_request_logs_enabled
-  serverless_connection_timeout_in_seconds = var.serverless_connection_timeout_in_seconds
-
-  dynamic "live_trace" {
-    for_each = var.live_trace == null ? [] : [var.live_trace]
-    content {
-      enabled                   = live_trace.value.enabled
-      messaging_logs_enabled    = live_trace.value.messaging_logs_enabled
-      connectivity_logs_enabled = live_trace.value.connectivity_logs_enabled
-      http_request_logs_enabled = live_trace.value.http_request_logs_enabled
+resource "azapi_resource" "this" {
+  location  = var.location
+  name      = var.name
+  parent_id = var.parent_id
+  type      = "Microsoft.SignalRService/signalR@2024-03-01"
+  body = {
+    properties = {
+      cors = var.cors_allowed_origins == null ? null : {
+        allowedOrigins = var.cors_allowed_origins
+      }
+      disableAadAuth   = !var.aad_auth_enabled
+      disableLocalAuth = !var.local_auth_enabled
+      features         = local.feature_flags
+      liveTraceConfiguration = var.live_trace == null ? null : {
+        categories = [
+          { enabled = tostring(var.live_trace.messaging_logs_enabled), name = "MessagingLogs" },
+          { enabled = tostring(var.live_trace.connectivity_logs_enabled), name = "ConnectivityLogs" },
+          { enabled = tostring(var.live_trace.http_request_logs_enabled), name = "HttpRequestLogs" },
+        ]
+        enabled = tostring(var.live_trace.enabled)
+      }
+      publicNetworkAccess      = var.public_network_access_enabled ? "Enabled" : "Disabled"
+      resourceLogConfiguration = { categories = local.resource_log_categories }
+      serverless = {
+        connectionTimeoutInSeconds = var.serverless_connection_timeout_in_seconds
+      }
+      tls = {
+        clientCertEnabled = var.tls_client_cert_enabled
+      }
+      upstream = {
+        templates = [for endpoint in var.upstream_endpoints : {
+          auth = endpoint.user_assigned_identity_id == null ? null : {
+            managedIdentity = { resource = endpoint.user_assigned_identity_id }
+            type            = "ManagedIdentity"
+          }
+          categoryPattern = endpoint.category_pattern
+          eventPattern    = endpoint.event_pattern
+          hubPattern      = endpoint.hub_pattern
+          urlTemplate     = endpoint.url_template
+        }]
+      }
+    }
+    sku = {
+      capacity = var.sku_capacity
+      name     = var.sku_name
     }
   }
-
-  dynamic "cors" {
-    for_each = var.cors_allowed_origins == null ? [] : [var.cors_allowed_origins]
-    content {
-      allowed_origins = cors.value
-    }
+  # `cors` and `liveTraceConfiguration` are null when the caller does not set them,
+  # but ARM populates both, which would diff forever without this.
+  ignore_null_property = true
+  response_export_values = {
+    host_name   = "properties.hostName"
+    public_port = "properties.publicPort"
+    server_port = "properties.serverPort"
   }
+  tags = var.tags
 
   dynamic "identity" {
     for_each = local.identity_type == null ? [] : [local.identity_type]
     content {
       type         = identity.value
-      identity_ids = local.has_user_assigned ? var.managed_identities.user_assigned_resource_ids : null
+      identity_ids = var.managed_identities.user_assigned_resource_ids
     }
   }
 
-  dynamic "upstream_endpoint" {
-    for_each = var.upstream_endpoints
-    content {
-      url_template              = upstream_endpoint.value.url_template
-      category_pattern          = upstream_endpoint.value.category_pattern
-      event_pattern             = upstream_endpoint.value.event_pattern
-      hub_pattern               = upstream_endpoint.value.hub_pattern
-      user_assigned_identity_id = upstream_endpoint.value.user_assigned_identity_id
+  lifecycle {
+    # `networkACLs` is written by azapi_update_resource below. An import pulls the
+    # live value into this body, and without this the next write would drop it —
+    # resetting the service to its default-allow posture.
+    ignore_changes = [body.properties.networkACLs]
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Network ACL
+# -----------------------------------------------------------------------------
+# Each rule is keyed by the server-generated connection name ("<service>.<guid>",
+# unrelated to the endpoint's own resourceGuid), so the service has to be re-read
+# to learn them.
+#
+# Deliberately NO `depends_on` here. With one, Terraform defers this read to apply
+# time whenever the service has any pending change, which leaves `name` unknown
+# inside a list — and azapi cannot plan an unknown inside a body list ("tuple
+# required", provider bug). Reading at plan time keeps the name concrete.
+#
+# The cost is the very first apply of a brand-new service: the connection does not
+# exist yet, so the lookup below fails and the apply must be run once more. Every
+# later apply is clean.
+
+data "azapi_resource" "private_endpoint_connections" {
+  count = var.network_acl != null && length(var.private_endpoints) > 0 ? 1 : 0
+
+  resource_id = azapi_resource.this.id
+  type        = "Microsoft.SignalRService/signalR@2024-03-01"
+  response_export_values = {
+    connections = "properties.privateEndpointConnections[].{name: name, private_endpoint_id: properties.privateEndpoint.id}"
+  }
+}
+
+resource "azapi_update_resource" "network_acl" {
+  count = var.network_acl != null ? 1 : 0
+
+  resource_id = azapi_resource.this.id
+  type        = "Microsoft.SignalRService/signalR@2024-03-01"
+  body = {
+    properties = {
+      networkACLs = {
+        defaultAction = var.network_acl.default_action
+        privateEndpoints = [
+          for k, v in var.network_acl.private_endpoints : {
+            allow = [for t in local.request_type_order : t if contains(coalesce(v.allowed_request_types, []), t)]
+            deny  = [for t in local.request_type_order : t if contains(coalesce(v.denied_request_types, []), t)]
+            name  = local.private_endpoint_connection_names[lower(azapi_resource.private_endpoint[k].id)]
+          }
+        ]
+        publicNetwork = var.network_acl.public_network == null ? null : {
+          allow = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.allowed_request_types, []), t)]
+          deny  = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.denied_request_types, []), t)]
+        }
+      }
     }
   }
+
+  lifecycle {
+    precondition {
+      condition = alltrue([
+        for k in keys(var.network_acl.private_endpoints) : contains(keys(var.private_endpoints), k)
+      ])
+      error_message = "Every key in network_acl.private_endpoints must also exist in private_endpoints."
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Access keys
+# -----------------------------------------------------------------------------
+# Reading keys costs an extra listKeys call and a wider permission requirement,
+# so it is opt-in. With `local_auth_enabled = false` the keys are inert anyway.
+
+resource "azapi_resource_action" "access_keys" {
+  count = var.include_access_keys ? 1 : 0
+
+  action                 = "listKeys"
+  method                 = "POST"
+  resource_id            = azapi_resource.this.id
+  type                   = "Microsoft.SignalRService/signalR@2024-03-01"
+  response_export_values = ["*"]
 }
 
 # -----------------------------------------------------------------------------
 # Lock
 # -----------------------------------------------------------------------------
 
-resource "azurerm_management_lock" "this" {
+resource "azapi_resource" "lock" {
   count = var.lock != null ? 1 : 0
 
-  name       = coalesce(var.lock.name, "lock-${var.name}")
-  scope      = azurerm_signalr_service.this.id
-  lock_level = var.lock.kind
-  notes      = var.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
+  name      = coalesce(var.lock.name, "lock-${var.name}")
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Authorization/locks@2020-05-01"
+  body = {
+    properties = {
+      level = var.lock.kind
+      notes = var.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
-# Role assignments (service-scoped)
+# Role assignments
 # -----------------------------------------------------------------------------
+# AzAPI has no equivalent of azurerm's `role_definition_name`, so role names are
+# resolved against a subscription-scope listing, as the AVM interfaces module
+# does. Assignment names are random UUIDs; `name` is exposed for callers adopting
+# an assignment that already exists.
 
-resource "azurerm_role_assignment" "this" {
+data "azapi_resource_list" "role_definitions" {
+  count = length(local.all_role_assignments) > 0 ? 1 : 0
+
+  parent_id = local.subscription_resource_id
+  type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
+  response_export_values = {
+    results = "value[].{id: id, role_name: properties.roleName}"
+  }
+}
+
+resource "random_uuid" "role_assignment_name" {
+  for_each = var.role_assignments
+}
+
+resource "azapi_resource" "role_assignments" {
   for_each = var.role_assignments
 
-  scope                                  = azurerm_signalr_service.this.id
-  principal_id                           = each.value.principal_id
-  role_definition_name                   = startswith(each.value.role_definition_id_or_name, "/") ? null : each.value.role_definition_id_or_name
-  role_definition_id                     = startswith(each.value.role_definition_id_or_name, "/") ? each.value.role_definition_id_or_name : null
-  description                            = each.value.description
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
-  principal_type                         = each.value.principal_type
+  name      = coalesce(each.value.name, random_uuid.role_assignment_name[each.key].result)
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  body = {
+    properties = {
+      condition                          = each.value.condition
+      conditionVersion                   = each.value.condition_version
+      delegatedManagedIdentityResourceId = each.value.delegated_managed_identity_resource_id
+      description                        = each.value.description
+      principalId                        = each.value.principal_id
+      principalType                      = each.value.principal_type
+      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
 # Diagnostic settings
 # -----------------------------------------------------------------------------
+# `Microsoft.Insights/diagnosticSettings` has never shipped a stable API version;
+# 2021-05-01-preview is the newest and what AVM uses.
 
-resource "azurerm_monitor_diagnostic_setting" "this" {
+resource "azapi_resource" "diagnostic_settings" {
   for_each = var.diagnostic_settings
 
-  name                           = coalesce(each.value.name, each.key)
-  target_resource_id             = azurerm_signalr_service.this.id
-  log_analytics_workspace_id     = each.value.workspace_resource_id
-  log_analytics_destination_type = each.value.workspace_resource_id == null ? null : each.value.log_analytics_destination_type
-  storage_account_id             = each.value.storage_account_resource_id
-  eventhub_authorization_rule_id = each.value.event_hub_authorization_rule_resource_id
-  eventhub_name                  = each.value.event_hub_name
-  partner_solution_id            = each.value.marketplace_partner_resource_id
-
-  dynamic "enabled_log" {
-    for_each = each.value.log_categories
-    content {
-      category = enabled_log.value
-    }
-  }
-
-  dynamic "enabled_log" {
-    for_each = each.value.log_groups
-    content {
-      category_group = enabled_log.value
-    }
-  }
-
-  dynamic "enabled_metric" {
-    for_each = each.value.metric_categories
-    content {
-      category = enabled_metric.value
+  name      = coalesce(each.value.name, each.key)
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
+  body = {
+    properties = {
+      eventHubAuthorizationRuleId = each.value.event_hub_authorization_rule_resource_id
+      eventHubName                = each.value.event_hub_name
+      logAnalyticsDestinationType = each.value.workspace_resource_id == null ? null : each.value.log_analytics_destination_type
+      logs = concat(
+        [for category in each.value.log_categories : { category = category, enabled = true }],
+        [for group in each.value.log_groups : { categoryGroup = group, enabled = true }],
+      )
+      marketplacePartnerId = each.value.marketplace_partner_resource_id
+      metrics              = [for category in each.value.metric_categories : { category = category, enabled = true }]
+      storageAccountId     = each.value.storage_account_resource_id
+      workspaceId          = each.value.workspace_resource_id
     }
   }
 }
@@ -161,123 +326,104 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
 # Private endpoints
 # -----------------------------------------------------------------------------
 
-resource "azurerm_private_endpoint" "this" {
+resource "azapi_resource" "private_endpoint" {
   for_each = var.private_endpoints
 
-  name                          = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  location                      = coalesce(each.value.location, var.location)
-  resource_group_name           = coalesce(each.value.resource_group_name, local.resource_group_name)
-  subnet_id                     = each.value.subnet_resource_id
-  custom_network_interface_name = each.value.network_interface_name
-  tags                          = each.value.tags
-
-  private_service_connection {
-    name                           = coalesce(each.value.private_service_connection_name, "${var.name}-psc-${each.key}")
-    private_connection_resource_id = azurerm_signalr_service.this.id
-    subresource_names              = [each.value.subresource_name]
-    is_manual_connection           = false
-  }
-
-  dynamic "private_dns_zone_group" {
-    for_each = var.private_endpoints_manage_dns_zone_group && length(each.value.private_dns_zone_resource_ids) > 0 ? [1] : []
-    content {
-      name                 = each.value.private_dns_zone_group_name
-      private_dns_zone_ids = each.value.private_dns_zone_resource_ids
-    }
-  }
-
-  dynamic "ip_configuration" {
-    for_each = each.value.ip_configurations
-    content {
-      name               = ip_configuration.value.name
-      private_ip_address = ip_configuration.value.private_ip_address
-      subresource_name   = coalesce(ip_configuration.value.subresource_name, each.value.subresource_name)
-      member_name        = ip_configuration.value.member_name
-    }
-  }
-}
-
-# Per-PE locks
-resource "azurerm_management_lock" "private_endpoint" {
-  for_each = { for k, v in var.private_endpoints : k => v if v.lock != null }
-
-  name       = coalesce(each.value.lock.name, "lock-${var.name}-pe-${each.key}")
-  scope      = azurerm_private_endpoint.this[each.key].id
-  lock_level = each.value.lock.kind
-  notes      = each.value.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
-}
-
-# Per-PE role assignments — flattened across all (pe, ra) pairs.
-locals {
-  private_endpoint_role_assignments = merge([
-    for pe_k, pe_v in var.private_endpoints : {
-      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
-    }
-  ]...)
-}
-
-resource "azurerm_role_assignment" "private_endpoint" {
-  for_each = local.private_endpoint_role_assignments
-
-  scope                                  = azurerm_private_endpoint.this[each.value.pe_key].id
-  principal_id                           = each.value.principal_id
-  role_definition_name                   = startswith(each.value.role_definition_id_or_name, "/") ? null : each.value.role_definition_id_or_name
-  role_definition_id                     = startswith(each.value.role_definition_id_or_name, "/") ? each.value.role_definition_id_or_name : null
-  description                            = each.value.description
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
-  principal_type                         = each.value.principal_type
-}
-
-# Per-PE application security group associations — flattened.
-locals {
-  private_endpoint_asg_associations = merge([
-    for pe_k, pe_v in var.private_endpoints : {
-      for asg_k, asg_v in pe_v.application_security_group_associations : "${pe_k}-${asg_k}" => {
-        pe_key = pe_k
-        asg_id = asg_v
+  location  = coalesce(each.value.location, var.location)
+  name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
+  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.subscription_resource_id}/resourceGroups/${each.value.resource_group_name}"
+  type      = "Microsoft.Network/privateEndpoints@2025-07-01"
+  body = {
+    properties = {
+      applicationSecurityGroups = [
+        for asg_id in values(each.value.application_security_group_associations) : { id = asg_id }
+      ]
+      customNetworkInterfaceName = each.value.network_interface_name
+      ipConfigurations = [for ip in values(each.value.ip_configurations) : {
+        name = ip.name
+        properties = {
+          groupId          = coalesce(ip.subresource_name, each.value.subresource_name)
+          memberName       = ip.member_name
+          privateIPAddress = ip.private_ip_address
+        }
+      }]
+      privateLinkServiceConnections = [{
+        name = coalesce(each.value.private_service_connection_name, "${var.name}-psc-${each.key}")
+        properties = {
+          groupIds             = [each.value.subresource_name]
+          privateLinkServiceId = azapi_resource.this.id
+        }
+      }]
+      subnet = {
+        id = each.value.subnet_resource_id
       }
     }
-  ]...)
+  }
+  # ARM returns "" for an unset customNetworkInterfaceName, which would diff
+  # against the null this sends.
+  ignore_null_property = true
+  response_export_values = {
+    custom_dns_configs = "properties.customDnsConfigs"
+    network_interfaces = "properties.networkInterfaces"
+  }
+  tags = each.value.tags
 }
 
-resource "azurerm_private_endpoint_application_security_group_association" "private_endpoint" {
-  for_each = local.private_endpoint_asg_associations
-
-  private_endpoint_id           = azurerm_private_endpoint.this[each.value.pe_key].id
-  application_security_group_id = each.value.asg_id
-}
-
-# -----------------------------------------------------------------------------
-# Network ACL
-# -----------------------------------------------------------------------------
-# A SignalR service has at most one network ACL. Managed as a sibling resource
-# because per-PE rules need PE IDs (cyclical if inlined in the service body).
-# -----------------------------------------------------------------------------
-
-resource "azurerm_signalr_service_network_acl" "this" {
-  count = var.network_acl != null ? 1 : 0
-
-  signalr_service_id = azurerm_signalr_service.this.id
-  default_action     = var.network_acl.default_action
-
-  dynamic "public_network" {
-    for_each = var.network_acl.public_network != null ? [var.network_acl.public_network] : []
-    content {
-      allowed_request_types = public_network.value.allowed_request_types
-      denied_request_types  = public_network.value.denied_request_types
-    }
+resource "azapi_resource" "private_endpoint_dns_zone_group" {
+  for_each = {
+    for k, v in var.private_endpoints : k => v
+    if var.private_endpoints_manage_dns_zone_group && length(v.private_dns_zone_resource_ids) > 0
   }
 
-  dynamic "private_endpoint" {
-    for_each = var.network_acl.private_endpoints
-    content {
-      id                    = azurerm_private_endpoint.this[private_endpoint.key].id
-      allowed_request_types = private_endpoint.value.allowed_request_types
-      denied_request_types  = private_endpoint.value.denied_request_types
+  name      = each.value.private_dns_zone_group_name
+  parent_id = azapi_resource.private_endpoint[each.key].id
+  type      = "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-07-01"
+  body = {
+    properties = {
+      privateDnsZoneConfigs = [for zone_id in each.value.private_dns_zone_resource_ids : {
+        name = basename(zone_id)
+        properties = {
+          privateDnsZoneId = zone_id
+        }
+      }]
+    }
+  }
+  response_export_values = { record_sets = "properties.privateDnsZoneConfigs[].recordSets[]" }
+}
+
+resource "azapi_resource" "private_endpoint_lock" {
+  for_each = { for k, v in var.private_endpoints : k => v if v.lock != null }
+
+  name      = coalesce(each.value.lock.name, "lock-${var.name}-pe-${each.key}")
+  parent_id = azapi_resource.private_endpoint[each.key].id
+  type      = "Microsoft.Authorization/locks@2020-05-01"
+  body = {
+    properties = {
+      level = each.value.lock.kind
+      notes = each.value.lock.kind == "CanNotDelete" ? "Cannot be deleted." : "Cannot be modified."
     }
   }
 }
 
+resource "random_uuid" "private_endpoint_role_assignment_name" {
+  for_each = local.private_endpoint_role_assignments
+}
+
+resource "azapi_resource" "private_endpoint_role_assignments" {
+  for_each = local.private_endpoint_role_assignments
+
+  name      = coalesce(each.value.name, random_uuid.private_endpoint_role_assignment_name[each.key].result)
+  parent_id = azapi_resource.private_endpoint[each.value.pe_key].id
+  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  body = {
+    properties = {
+      condition                          = each.value.condition
+      conditionVersion                   = each.value.condition_version
+      delegatedManagedIdentityResourceId = each.value.delegated_managed_identity_resource_id
+      description                        = each.value.description
+      principalId                        = each.value.principal_id
+      principalType                      = each.value.principal_type
+      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+    }
+  }
+}

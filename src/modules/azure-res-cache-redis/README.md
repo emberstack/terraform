@@ -2,7 +2,7 @@
 
 Terraform module for **Azure Managed Redis** (`Microsoft.Cache/redisEnterprise`). Mirrors the input/output surface of the upstream AVM module [`Azure/avm-res-cache-redisenterprise/azurerm`](https://github.com/Azure/terraform-azurerm-avm-res-cache-redisenterprise) as closely as possible, but with two deliberate differences:
 
-1. Uses the `azurerm` provider (not `azapi`) — keeps state addresses stable when migrating from the older `azurerm_managed_redis`-based modules.
+1. Exposes `access_keys_authentication_enabled`, the persistence backup frequencies, `geo_replication_group_name`, `minimum_tls_version` and `port`, none of which AVM surfaces.
 2. Exposes a few features the AVM module does not yet support:
    - `access_keys_authentication_enabled`
    - `persistence_append_only_file_backup_frequency`
@@ -110,8 +110,12 @@ carries a description, and CI enforces that.
 
 ## Notes vs. the upstream AVM module
 
-- **Provider.** This module uses `azurerm`, the AVM uses `azapi`. Practical implication: state addresses (`azurerm_managed_redis.this`, `azurerm_private_endpoint.this[<key>]`) are stable across migrations from older `azurerm`-based modules.
+- **One azurerm resource became two AzAPI ones, twice.** ARM models the cluster and its default database separately, and likewise a private endpoint and its DNS zone group — so `azurerm_managed_redis.this` maps to `azapi_resource.this` + `azapi_resource.database`, and each `azurerm_private_endpoint.this[k]` maps to `azapi_resource.private_endpoint[k]` + `azapi_resource.private_endpoint_dns_zone_group[k]`. Application security group associations go the other way: ARM keeps them in the endpoint body, so there is no separate resource for them.
+
+- **`minimum_tls_version` and `port` are always sent.** ARM writes are full replaces, so a property left out of the body is reset to the service default. Both are pinned to Azure's current default rather than omitted, so an existing value cannot be silently downgraded by an unrelated change.
+
+- **`deferUpgrade` and `notifyKeyspaceEvents` are not managed.** They are left to the service default for the same reason the two above are pinned — they carry no security or connectivity consequence. If you defer an upgrade out of band, an apply here will clear the deferral.
 - **CMK identity.** Both modules require a user-assigned identity for CMK (the resource provider only supports `userAssignedIdentity` today). The `identity_type` field is kept for AVM compatibility but is validated to `UserAssignedIdentity`.
-- **`zones`.** The AVM input is omitted because the `azurerm_managed_redis` resource does not expose zones directly — zone redundancy is implicit when `high_availability = "Enabled"` in regions with availability zones.
+- **`zones`.** The AVM input is omitted — zone redundancy is implicit when `high_availability = "Enabled"` in regions with availability zones, and ARM reports it back as `redundancyMode`.
 - **`access_policy_assignments`.** Not implemented — the `azurerm_managed_redis` resource doesn't model database-level access policies. If you need Entra-ID-only auth, use `access_keys_authentication_enabled = false` and manage policies via a sibling resource.
 - **`clustering_policy = "NoCluster"`.** Allowed (the underlying provider accepts it). The AVM module restricts to `EnterpriseCluster | OSSCluster | NoEviction` — different semantics.

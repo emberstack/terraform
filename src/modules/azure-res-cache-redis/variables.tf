@@ -122,6 +122,7 @@ variable "customer_managed_key_encryption" {
 
 variable "role_assignments" {
   type = map(object({
+    name                                   = optional(string, null)
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
@@ -137,6 +138,13 @@ variable "role_assignments" {
 
     `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
     a full role definition resource ID. Auto-routed by the leading `/`.
+
+    `name` is the assignment's ARM name (a GUID). Leave it unset — a random UUID is
+    generated — unless you are adopting an assignment that already exists, where the
+    existing GUID must be supplied to avoid a destroy-and-recreate.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect: the check is an `azurerm` provider behaviour with no ARM equivalent.
   EOT
   nullable    = false
 }
@@ -145,6 +153,7 @@ variable "private_endpoints" {
   type = map(object({
     name = optional(string, null)
     role_assignments = optional(map(object({
+      name                                   = optional(string, null)
       role_definition_id_or_name             = string
       principal_id                           = string
       description                            = optional(string, null)
@@ -352,5 +361,29 @@ variable "redis_modules" {
 
     Adding/removing modules is destructive (cluster recreation).
   EOT
+  nullable    = false
+}
+
+variable "minimum_tls_version" {
+  type        = string
+  default     = "1.2"
+  description = <<-EOT
+    Minimum TLS version the cluster accepts. Sent on every write rather than left to the service
+    default, so an existing value can never be silently reset by an unrelated change.
+
+    AVM `avm-res-cache-redisenterprise` does not expose this — emberstack does.
+  EOT
+  nullable    = false
+
+  validation {
+    condition     = contains(["1.0", "1.1", "1.2"], var.minimum_tls_version)
+    error_message = "minimum_tls_version must be one of: 1.0, 1.1, 1.2."
+  }
+}
+
+variable "port" {
+  type        = number
+  default     = 10000
+  description = "TCP port the default database listens on. Sent explicitly for the same reason as `minimum_tls_version` — clients break if it moves."
   nullable    = false
 }
