@@ -1,6 +1,6 @@
 # Pattern: Virtual Network DNS Servers
 
-Sets the DNS servers on an existing virtual network without redeclaring the vnet itself. Classified `ptn` rather than `res` because it does not create or manage a primary Azure resource — `azurerm_virtual_network_dns_servers` just PATCHes `properties.dhcpOptions.dnsServers` on the parent vnet.
+Sets the DNS servers on an existing virtual network without redeclaring the vnet itself. Classified `ptn` rather than `res` because it does not create or manage a primary Azure resource — it only writes `properties.dhcpOptions.dnsServers` on the parent vnet.
 
 ## Why this pattern exists
 
@@ -17,7 +17,7 @@ Splitting DNS-server assignment into a downstream Terraform module breaks the cy
 hub-vnet  →  hub-firewall  →  this pattern (sets DNS on hub-vnet)
 ```
 
-The `azurerm_virtual_network_dns_servers` Terraform resource type is purpose-built for exactly this: it does not create a new Azure resource — it just PATCHes the existing vnet's `dhcpOptions.dnsServers`. This module formalises the pattern.
+`azapi_update_resource` is purpose-built for exactly this: it does not create a new Azure resource — it writes a subset of an existing one's properties. ARM offers no property-level PATCH for virtual networks (only tags), so the write is a read-merge-write of the whole vnet; everything not named in `body` is echoed back untouched, subnets and peerings included. This module formalises the pattern.
 
 ## Usage
 
@@ -67,6 +67,8 @@ carries a description, and CI enforces that.
 
 ## Notes
 
-- **No new Azure resource is created.** The Azure REST view is just a PATCH on the existing vnet body. Destroying this module does not destroy the vnet — it sets `dhcpOptions.dnsServers` to null (Azure-provided DNS).
+- **No new Azure resource is created.** The Azure REST view is a write of `dhcpOptions` on the existing vnet body. Destroying this module does not destroy the vnet.
+- **Destroying this module leaves the DNS servers in place.** `azapi_update_resource` performs no operation on delete, so the last-written values persist with nothing managing them. To revert to Azure-provided DNS, set `dns_servers = []` and apply *before* removing the module.
+- **The vnet's owner must not clear `dhcpOptions`.** Whatever module owns the vnet writes the full body on every apply, so it will revert this one unless it preserves the value. With an AzAPI-based owner (AVM included), add `lifecycle { ignore_changes = [body.properties.dhcpOptions] }` to the vnet resource: refresh pulls the live value into state and `ignore_changes` keeps it, so the owner's write preserves it. Without that, the two modules alternate and DNS resolution flaps.
 - **Apply ordering matters.** This module assumes the target vnet already exists. In a hub-spoke topology, place this leaf downstream of both the vnet and whatever produces the DNS server IP (typically a firewall).
 - **Conflicts with inline DNS in the vnet body.** If you also set `dns_servers` on the AVM `avm-res-network-virtualnetwork` module's input, both will fight over the same ARM property on every apply. Use one or the other; the inline form is fine for spoke-to-static-DNS, this module is for breaking cycles.
