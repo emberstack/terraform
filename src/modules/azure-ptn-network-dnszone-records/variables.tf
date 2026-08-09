@@ -1,6 +1,6 @@
 variable "dns_zone_resource_id" {
   type        = string
-  description = "ARM resource ID of the existing public DNS zone (e.g., `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/dnszones/<zone>`). The zone name and resource group name are parsed from this."
+  description = "ARM resource ID of the existing public DNS zone. Used directly as each record's `parent_id`."
   nullable    = false
 
   validation {

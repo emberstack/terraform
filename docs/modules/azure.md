@@ -1,9 +1,9 @@
 # Azure
 
 Modules on the `hashicorp/azurerm` provider, except the DNS-zone families — the public and private zone
-modules, the `vnet-link` submodule, and both `privatednszone` pattern modules are on `Azure/azapi`. The
-rest are being moved the same way; each carries a migration section when it moves, because the resource
-type changes and `moved` blocks cannot cross that.
+modules, the `vnet-link` submodule, and all three DNS record/link pattern modules are on `Azure/azapi`.
+The rest are being moved the same way; each carries a migration section when it moves, because the
+resource type changes and `moved` blocks cannot cross that.
 
 Input shapes mirror [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) where an
 AVM equivalent exists — `name`, `resource_group_name`, `tags`, `role_assignments` — and add what AVM
@@ -135,9 +135,10 @@ azurerm modules have not been checked against v5.
 
 ## Migrating the DNS-zone families to AzAPI
 
-`azure-res-network-dnszone`, `azure-res-network-privatednszone`, `modules/vnet-link` and both
-`privatednszone` pattern modules moved from `azurerm` to `Azure/azapi`. Inputs and outputs are
-unchanged; the resource *types* are not, so `moved` blocks do not apply — Terraform reads the new addresses as unrelated resources and plans a destroy-and-recreate.
+`azure-res-network-dnszone`, `azure-res-network-privatednszone`, `modules/vnet-link` and the
+`dnszone-records`, `privatednszone-records` and `privatednszone-vnet-links` pattern modules moved from
+`azurerm` to `Azure/azapi`. Inputs and outputs are unchanged; the resource *types* are not, so `moved`
+blocks do not apply — Terraform reads the new addresses as unrelated resources and plans a destroy-and-recreate.
 Adopt them instead. Per-module recipes are in
 [`azure-res-network-privatednszone`'s README](../../src/modules/azure-res-network-privatednszone/README.md);
 the shape is the same everywhere:
