@@ -115,5 +115,5 @@ module "dev_zone_records" {
 ## Notes
 
 - **Public zones are global.** No `location` input; Azure tracks zones at the subscription level, not per-region.
-- **Parent zone in a different subscription.** This module uses the default `azurerm` provider for both the zone and the parent NS record. If the parent zone lives in a different subscription, set the leaf's provider to that subscription, or use a provider alias and pass it via the `providers` argument from the consuming leaf.
+- **Parent zone in a different subscription.** This module uses the default `azapi` provider for both the zone and the parent NS record. If the parent zone lives in a different subscription, set the leaf's provider to that subscription, or use a provider alias and pass it via the `providers` argument from the consuming leaf.
 - **RG creation is out of scope.** Place a sibling `resource-group/` leaf upstream — same convention as the AVM modules in the consuming workspace's live tree.

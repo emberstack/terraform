@@ -34,7 +34,7 @@ variable "soa_record" {
     refresh_time = optional(number, 3600)
     retry_time   = optional(number, 300)
     ttl          = optional(number, 3600)
-    tags         = optional(map(string))
+    tags         = optional(map(string), {})
   })
   description = <<-EOT
     Optional SOA record overrides. `email` is required when this is set; every other field defaults to
