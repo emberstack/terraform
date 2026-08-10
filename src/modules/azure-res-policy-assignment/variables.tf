@@ -13,6 +13,17 @@ variable "name" {
   }
 }
 
+variable "definition_version" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Version of the policy definition to bind, e.g. `1.*.*`.
+
+    Left null, Azure picks its own default and this module does not manage the field —
+    an existing pinned version is preserved rather than reset.
+  EOT
+}
+
 variable "scope" {
   type        = string
   description = <<-EOT
@@ -24,6 +35,15 @@ variable "scope" {
     - Resource:         `/subscriptions/<sub>/resourceGroups/<rg>/providers/<...>`
   EOT
   nullable    = false
+  validation {
+    condition = (
+      startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ||
+      can(regex("^/subscriptions/[^/]+$", var.scope)) ||
+      can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
+      can(regex("^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
+    )
+    error_message = "scope must be a management group, subscription, resource group, or resource ARM resource ID."
+  }
 }
 
 variable "policy_definition_id" {
@@ -162,6 +182,7 @@ variable "managed_identities" {
 
 variable "identity_role_assignments" {
   type = map(object({
+    name                                   = optional(string, null)
     role_definition_id_or_name             = string
     scope                                  = optional(string, null)
     description                            = optional(string, null)

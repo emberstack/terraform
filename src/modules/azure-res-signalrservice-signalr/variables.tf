@@ -324,7 +324,7 @@ variable "network_acl" {
   default     = null
   description = <<-EOT
     Network ACL configuration. Managed via the sibling
-    `azurerm_signalr_service_network_acl` resource — exactly one ACL per
+    ACL — exactly one per
     SignalR service.
 
     - `default_action`: `Allow` or `Deny` (default: `Deny`).

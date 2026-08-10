@@ -96,7 +96,7 @@ variable "parent_zone" {
     delegation_tags = optional(map(string), {})
   })
   description = <<-EOT
-    Optional parent-zone NS delegation. When set, creates an `azurerm_dns_ns_record` in the parent zone whose `records` are this zone's name servers — wiring up the subdomain delegation in one apply.
+    Optional parent-zone NS delegation. When set, creates an NS record in the parent zone whose entries are this zone's name servers — wiring up the subdomain delegation in one apply.
 
     `zone_id` is the parent zone's ARM resource ID; the parent's RG name and zone name are parsed from it.
 

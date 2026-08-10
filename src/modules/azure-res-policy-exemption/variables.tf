@@ -24,6 +24,15 @@ variable "scope" {
     - Resource:         `/subscriptions/<sub>/resourceGroups/<rg>/providers/<...>`
   EOT
   nullable    = false
+  validation {
+    condition = (
+      startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ||
+      can(regex("^/subscriptions/[^/]+$", var.scope)) ||
+      can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
+      can(regex("^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
+    )
+    error_message = "scope must be a management group, subscription, resource group, or resource ARM resource ID."
+  }
 }
 
 variable "policy_assignment_id" {
