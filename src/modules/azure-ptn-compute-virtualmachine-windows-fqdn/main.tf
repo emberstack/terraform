@@ -2,9 +2,12 @@
 # WINDOWS VM PRIMARY DNS SUFFIX (Microsoft.Compute/virtualMachines/extensions)
 # =============================================================================
 # Sets the guest primary DNS suffix via a CustomScriptExtension, then applies it
-# with an ARM restart. The restart (not an in-guest `shutdown`) is deliberate: an
-# in-guest reboot is invisible to ARM, so Terraform can't wait on it; azapi blocks
-# on the restart LRO until the VM is running again.
+# with an ARM restart. Both are azapi: the extension is an azapi_resource and the
+# restart an azapi_resource_action, so the module depends only on azapi.
+#
+# The restart (not an in-guest `shutdown`) is deliberate: an in-guest reboot is
+# invisible to ARM, so Terraform can't wait on it; azapi blocks on the restart
+# LRO until the VM is running again.
 # =============================================================================
 
 locals {
@@ -20,30 +23,41 @@ locals {
     Write-Output "Primary DNS suffix set to '$suffix'. Reboot required to take effect."
     exit 0
   PS
-}
-
-resource "azurerm_virtual_machine_extension" "dns_suffix" {
-  name                       = "SetPrimaryDnsSuffix"
-  virtual_machine_id         = var.virtual_machine_id
-  publisher                  = "Microsoft.Compute"
-  type                       = "CustomScriptExtension"
-  type_handler_version       = "1.10"
-  auto_upgrade_minor_version = true
-  provision_after_extensions = var.provision_after_extensions
-  tags                       = var.tags
 
   # -ExecutionPolicy is omitted: it governs script files, not the inline
   # -EncodedCommand, so it would be a no-op here.
-  settings = jsonencode({
-    commandToExecute = "powershell.exe -NoProfile -EncodedCommand ${textencodebase64(local.set_dns_suffix_script, "UTF-16LE")}"
-  })
+  command_to_execute = "powershell.exe -NoProfile -EncodedCommand ${textencodebase64(local.set_dns_suffix_script, "UTF-16LE")}"
+}
+
+resource "azapi_resource" "dns_suffix" {
+  type      = "Microsoft.Compute/virtualMachines/extensions@2024-07-01"
+  name      = "SetPrimaryDnsSuffix"
+  parent_id = var.virtual_machine_id
+  location  = var.location
+  tags      = var.tags
+
+  # settings is a native object - azapi serializes the whole body to JSON, so no
+  # jsonencode() wrapper is needed around it.
+  body = {
+    properties = {
+      publisher                = "Microsoft.Compute"
+      type                     = "CustomScriptExtension"
+      typeHandlerVersion       = "1.10"
+      autoUpgradeMinorVersion  = true
+      provisionAfterExtensions = var.provision_after_extensions
+      settings = {
+        commandToExecute = local.command_to_execute
+      }
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
 # Apply the suffix with an ARM restart (blocks until the VM is running again)
 # -----------------------------------------------------------------------------
-# replace_triggered_by keys on .settings so the restart re-fires only when the
-# suffix changes - not on tags/handler changes; the action is otherwise inert.
+# replace_triggered_by keys on the extension's body, which carries the settings
+# (and thus the suffix). It changes iff the script/suffix changes; tags are a
+# separate top-level attribute, not part of body, so they don't re-fire it.
 
 resource "azapi_resource_action" "reboot" {
   count = var.reboot ? 1 : 0
@@ -58,8 +72,8 @@ resource "azapi_resource_action" "reboot" {
   }
 
   lifecycle {
-    replace_triggered_by = [azurerm_virtual_machine_extension.dns_suffix.settings]
+    replace_triggered_by = [azapi_resource.dns_suffix.body]
   }
 
-  depends_on = [azurerm_virtual_machine_extension.dns_suffix]
+  depends_on = [azapi_resource.dns_suffix]
 }

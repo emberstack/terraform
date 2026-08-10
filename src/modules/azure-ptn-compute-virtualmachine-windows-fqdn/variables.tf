@@ -8,6 +8,14 @@ variable "virtual_machine_id" {
   }
 }
 
+# azapi does not infer the extension's location from the parent VM, so the
+# caller must pass the VM's region. A VM extension is location-tracked and must
+# sit in the same region as its VM, so this has to equal the VM's location.
+variable "location" {
+  description = "Azure region of the target VM. A VM extension is a location-tracked resource and must match the VM's region (e.g. westeurope)."
+  type        = string
+}
+
 variable "dns_suffix" {
   description = "Primary DNS suffix to write in-guest, e.g. westeurope.cloudapp.azure.com, so the machine's FQDN matches the public DNS name of its IP. Any lowercase DNS domain is accepted."
   type        = string
