@@ -48,8 +48,7 @@ Modules declare `required_providers` in `versions.tf` and **never contain a `pro
 consuming configuration authenticates and configures the provider:
 
 ```hcl
-provider "azurerm" {
-  features {}
+provider "azapi" {
   subscription_id = var.subscription_id
 }
 

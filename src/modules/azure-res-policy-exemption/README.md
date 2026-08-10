@@ -4,7 +4,9 @@ Terraform module for a single **Azure Policy exemption** at any scope (managemen
 
 ## Why this exists alongside the AVM module
 
-There is no AVM module for `policyExemptions`. This module is a thin wrapper around the four `azurerm_<scope>_policy_exemption` resources, with the same scope-routing pattern as [`azure-res-policy-assignment`](../azure-res-policy-assignment/) so exemptions and assignments compose cleanly.
+There is no AVM module for `policyExemptions`. This module is a thin wrapper around `Microsoft.Authorization/policyExemptions`, using the same scope-as-`parent_id` handling as [`azure-res-policy-assignment`](../azure-res-policy-assignment/) so exemptions and assignments compose cleanly.
+
+The API version is pinned to `2022-07-01-preview` because no stable version of `policyExemptions` exists — preview is the only version Azure ships.
 
 ## Usage
 
@@ -15,7 +17,7 @@ module "exempt_legacy_storage_from_https" {
   source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-policy-exemption?ref=vX.Y.Z"
 
   name                 = "exempt-legacy-storage-https"
-  scope                = azurerm_storage_account.legacy.id
+  scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-legacy/providers/Microsoft.Storage/storageAccounts/stlegacy"
   policy_assignment_id = module.security_baseline_assignment.resource_id
   exemption_category   = "Waiver"
 
@@ -37,7 +39,7 @@ module "exempt_workload_rg" {
   source = "..."
 
   name                 = "exempt-workload-rg"
-  scope                = azurerm_resource_group.workload.id
+  scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-workload"
   policy_assignment_id = module.tag_protection_assignment.resource_id
   exemption_category   = "Mitigated"
   description          = "Tag protection compensated by RBAC lock managed in IaC."

@@ -257,8 +257,8 @@ jobs:
 
           # One shared plugin directory for all of the inits below. Not an
           # optimisation: without it Terraform downloads a private copy of every
-          # provider into each module's .terraform/ — gigabytes, and a dozen
-          # copies of azurerm alone.
+          # provider into each module's .terraform/ — gigabytes, and dozens of
+          # copies of the same fortios and azapi builds.
           #
           # Exported here rather than in `env:` — Terraform does not expand a
           # leading `~` in TF_PLUGIN_CACHE_DIR, and `env:` values get no shell

@@ -1,9 +1,13 @@
 # Azure
 
-Modules on the `hashicorp/azurerm` provider, except the DNS-zone families — the public and private zone
-modules, the `vnet-link` submodule, and all three DNS record/link pattern modules are on `Azure/azapi`.
-The rest are being moved the same way; each carries a migration section when it moves, because the
-resource type changes and `moved` blocks cannot cross that.
+Modules on the `Azure/azapi` provider. Every module in this family talks to ARM directly, so the
+resource shape is the ARM request body: properties use ARM's own casing, a scope is the resource's
+`parent_id`, and each `type` carries an explicit API version.
+
+Two consequences worth knowing before you read further. ARM writes are **full replaces** — a property
+left out of the body is reset to the service default, so anything with a security or connectivity
+consequence is sent explicitly rather than omitted. And there is no provider layer smoothing over ARM's
+model, so where ARM splits a thing into parent and child resources, the module does too.
 
 Input shapes mirror [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) where an
 AVM equivalent exists — `name`, `resource_group_name`, `tags`, `role_assignments` — and add what AVM
@@ -38,22 +42,25 @@ lacks. Keep new inputs shaped the AVM way.
 
 ## Scope routing
 
-`azure-res-policy-assignment` and `azure-res-policy-exemption` accept a single `scope` string and pick
-the matching resource type from its shape:
+`azure-res-policy-assignment` and `azure-res-policy-exemption` accept a single `scope` string, which
+becomes the resource's `parent_id`. ARM anchors these resources by parent, so one resource covers every
+scope kind:
 
-| `scope` looks like | Resource used |
+| `scope` looks like | Anchored at |
 |---|---|
 | `/providers/Microsoft.Management/managementGroups/<mg>` | management group |
 | `/subscriptions/<sub>` | subscription |
 | `/subscriptions/<sub>/resourceGroups/<rg>` | resource group |
 | `/subscriptions/<sub>/resourceGroups/<rg>/providers/…` | resource |
 
-Callers get one input instead of four mutually exclusive ones, and the four underlying resources are
-pulled through `coalesce` so outputs are uniform regardless of scope.
+Callers get one input instead of four mutually exclusive ones, and the shape is checked by a variable
+validation. The `scope_kind` output still reports which of the four a scope resolved to, for callers
+that branch on it.
 
-**Changing `scope` across kinds changes the resource address** and therefore destroys and recreates
-the assignment. Moving a policy assignment between a subscription and a resource group is not an
-in-place update.
+**Changing `scope` still destroys and recreates**, even though the Terraform address no longer moves:
+`parent_id` forces replacement, and it has to — a policy assignment at a subscription and the same
+assignment at a resource group are different ARM resources with different IDs. Moving one between
+scopes is not an in-place update.
 
 ### Managed identities
 
@@ -99,66 +106,50 @@ Choose between it and the collection pattern by ownership, not by count:
 Nothing in this repository sources `vnet-link`, and that means nothing — submodule paths are
 addressable by git ref, so external consumers reach it directly.
 
-## Migrating a management-group-scoped initiative
+## Migrating to AzAPI
 
-`azure-res-policy-set-definition` picks its resource type from the scope: `management_group_id` set
-gives `azurerm_management_group_policy_set_definition`, null gives `azurerm_policy_set_definition`.
-The split exists because `management_group_id` on the latter is deprecated and removed in azurerm
-v5.0. Both types carry identical schemas, so no input or output changes shape.
-
-Changing scope type changes the Terraform address. The two types address the same ARM resource ID,
-but azurerm does not implement `MoveState` for the pair — a `moved` block fails with *"Move Resource
-State Not Supported"* — so the module deliberately ships none.
-
-**By default the initiative is destroyed and recreated**, along with every assignment referencing it.
-The resource itself comes back identical, but the assignment is **unenforced for the length of the
-apply**. For a deny-effect initiative that is a real gap: schedule it, and do not run it as a
-side effect of an unrelated change.
-
-If you cannot accept that gap, re-address the state instead. Because the ARM resource ID is
-unchanged, this is a state-only operation and the plan afterwards is empty. Take a state backup
-first, then:
-
-```bash
-terraform state rm 'module.<path>.azurerm_policy_set_definition.this'
-```
-
-```bash
-terraform import 'module.<path>.azurerm_management_group_policy_set_definition.management_group[0]' '/providers/Microsoft.Management/managementGroups/<mg>/providers/Microsoft.Authorization/policySetDefinitions/<name>'
-```
-
-Then plan. A correct migration reports **no changes** — nothing is created or destroyed in Azure.
-A plan that still shows a destroy means the import did not land; do not apply it.
-
-The azurerm major cap stays in place for now. This module no longer blocks it, but the other
-azurerm modules have not been checked against v5.
-
-## Migrating the DNS-zone families to AzAPI
-
-`azure-res-network-dnszone`, `azure-res-network-privatednszone`, `modules/vnet-link` and the
-`dnszone-records`, `privatednszone-records` and `privatednszone-vnet-links` pattern modules moved from
-`azurerm` to `Azure/azapi`. Inputs and outputs are unchanged; the resource *types* are not, so `moved`
-blocks do not apply — Terraform reads the new addresses as unrelated resources and plans a destroy-and-recreate.
-Adopt them instead. Per-module recipes are in
-[`azure-res-network-privatednszone`'s README](../../src/modules/azure-res-network-privatednszone/README.md);
-the shape is the same everywhere:
+Every module in this family moved from `hashicorp/azurerm` to `Azure/azapi`. Inputs and outputs kept
+their shape, so caller configuration does not move — but the resource *types* changed, and `moved`
+blocks cannot cross a type change. Terraform reads the new addresses as unrelated resources and plans a
+destroy-and-recreate. Adopt the existing resources into the new addresses instead. Per-module recipes
+live in each module's README; the shape is the same everywhere:
 
 ```bash
 terraform state pull > backup.tfstate
-terraform state rm '<old azurerm address>'
+terraform state rm '<old address>'
 terraform import '<new azapi address>' '<ARM resource ID>'
 terraform plan   # expect: No changes
 ```
 
-Three things that are easy to get wrong:
+Take the backup. `state rm` is not reversible without it, and a half-migrated unit is worse than an
+unmigrated one.
 
-- **Role assignments** on the zone module must have their `random_uuid` imported with the *existing*
-  assignment GUID, or a fresh UUID is generated and the assignment is replaced — a brief loss of access
-  on apply.
-- **A zone with no role assignments** lands on an outputs-only plan rather than *no changes*: `import`
-  persists an empty `for_each` output as null instead of `{}`. The settling apply reports
+Five things that are easy to get wrong:
+
+- **Role assignments** must have their `random_uuid` imported with the *existing* assignment GUID, or a
+  fresh UUID is generated and the assignment is replaced — a brief loss of access on apply. Supplying
+  `role_assignments[*].name` explicitly does the same job from configuration.
+- **A resource with no role assignments** lands on an outputs-only plan rather than *no changes*:
+  `import` persists an empty `for_each` output as null instead of `{}`. The settling apply reports
   `0 added, 0 changed, 0 destroyed`.
+- **`import` records the provider's newest API version, not the one in the module.** The first plan
+  afterwards can show an in-place change that only rewrites `type` to the pinned version. It is a state
+  correction, not an Azure write.
+- **Some import IDs need `?api-version=<version>` appended.** Policy assignments and exemptions report
+  *"Cannot import non-existent remote object"* without it, even though the ID is correct.
 - **Record-set tags live in `properties.metadata`**, not resource `tags`. AzAPI does not paper over
   that the way the azurerm provider did.
 
 A plan that still shows a destroy means an import did not land. Do not apply it.
+
+### What the move fixed
+
+Scope handling collapsed. `azure-res-policy-assignment` and `azure-res-policy-exemption` each replaced
+four scope-specific resource types with one; `azure-res-policy-set-definition` replaced a pair that
+could not `moved` between them at all. Anchoring is now `parent_id`, so re-anchoring an initiative
+between a management group and a subscription no longer needs state surgery.
+
+⚠️ It is still a destroy-and-recreate, and for a deny-effect initiative that gap is real: every
+assignment referencing the initiative is **unenforced for the length of the apply**. The resource comes
+back identical, so schedule the change deliberately rather than letting it ride along with an unrelated
+one.

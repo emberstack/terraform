@@ -4,7 +4,7 @@ Map-driven wrapper around [`azure-res-policy-exemption`](../azure-res-policy-exe
 
 ## Why this exists alongside the AVM module
 
-There is no AVM module for `policyExemptions`, and the AzureRM provider has four scope-specific resources (`azurerm_<scope>_policy_exemption`). [`azure-res-policy-exemption`](../azure-res-policy-exemption/) already auto-routes a single exemption based on its scope ID. This pattern module is the natural next step: when a deployment needs to declare *many* exemptions (compliance frameworks, mitigated controls, custom-role allowlists, ...) it removes the boilerplate of instantiating the resource module by hand for each one.
+There is no AVM module for `policyExemptions`. [`azure-res-policy-exemption`](../azure-res-policy-exemption/) already handles a single exemption at any scope. This pattern module is the natural next step: when a deployment needs to declare *many* exemptions (compliance frameworks, mitigated controls, custom-role allowlists, ...) it removes the boilerplate of instantiating the resource module by hand for each one.
 
 ## Usage
 
@@ -87,5 +87,5 @@ carries a description, and CI enforces that.
 
 ## Notes
 
-- **State address stability.** Each entry creates `module.<name>.module.exemption["<key>"].azurerm_<scope>_policy_exemption.this["<exemption-name>"]`. The inner resources use `for_each = toset([var.name])`, so the final index is the exemption's `name` string, not a numeric `[0]`. Changing an entry's scope kind (e.g. subscription → resource) is a recreate, since it routes to a different resource type. Renaming a key — or the exemption `name` — is also a recreate, so pick stable values for both.
+- **State address stability.** Each entry creates `module.<name>.module.exemption["<key>"].azapi_resource.this` — one resource per entry, no trailing index, whatever the scope. Renaming a key moves the address and so recreates the exemption; changing an entry's `scope` or `name` recreates it too, since both are part of the ARM resource ID. Pick stable values for all three.
 - **Composing with other modules.** Pair with [`azure-ptn-policy-aegis-shield-tag-protection`](../azure-ptn-policy-aegis-shield-tag-protection/) or [`azure-res-policy-assignment`](../azure-res-policy-assignment/): pass `module.<name>.assignment_id` (or any `policy_assignment_id`) into one or more entries here.

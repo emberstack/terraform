@@ -22,14 +22,14 @@ module "redis" {
 
   name      = "my-redis-cluster"
   location  = "westeurope"
-  parent_id = azurerm_resource_group.example.id
+  parent_id = var.resource_group_resource_id
   sku_name  = "Balanced_B0"
 }
 ```
 
 ### CMK encryption with user-assigned identity
 
-The `customer_managed_key` block in the AzureRM provider requires a user-assigned identity. Pass the same UAI in both `managed_identities.user_assigned_resource_ids` (so the cluster identity references it) and `customer_managed_key_encryption.user_assigned_identity_resource_id` (so the CMK block uses it).
+CMK requires a user-assigned identity — the resource provider only supports `userAssignedIdentity`. Pass the same UAI in both `managed_identities.user_assigned_resource_ids` (so the cluster identity references it) and `customer_managed_key_encryption.user_assigned_identity_resource_id` (so the CMK block uses it).
 
 ```hcl
 module "redis" {
@@ -37,17 +37,17 @@ module "redis" {
 
   name      = "my-redis-cluster"
   location  = "westeurope"
-  parent_id = azurerm_resource_group.example.id
+  parent_id = var.resource_group_resource_id
   sku_name  = "Balanced_B0"
 
   managed_identities = {
-    user_assigned_resource_ids = [azurerm_user_assigned_identity.cmk.id]
+    user_assigned_resource_ids = [var.cmk_identity_resource_id]
   }
 
   customer_managed_key_encryption = {
     key_encryption_key_url             = "https://my-vault.vault.azure.net/keys/redis-cmk/abc123"
     identity_type                      = "UserAssignedIdentity"
-    user_assigned_identity_resource_id = azurerm_user_assigned_identity.cmk.id
+    user_assigned_identity_resource_id = var.cmk_identity_resource_id
   }
 }
 ```
@@ -78,8 +78,8 @@ module "redis" {
 
   private_endpoints = {
     default = {
-      subnet_resource_id            = azurerm_subnet.private_endpoints.id
-      private_dns_zone_resource_ids = [azurerm_private_dns_zone.redis.id]
+      subnet_resource_id            = var.private_endpoints_subnet_resource_id
+      private_dns_zone_resource_ids = [var.redis_private_dns_zone_resource_id]
     }
   }
 }
@@ -117,5 +117,5 @@ carries a description, and CI enforces that.
 - **`deferUpgrade` and `notifyKeyspaceEvents` are not managed.** They are left to the service default for the same reason the two above are pinned — they carry no security or connectivity consequence. If you defer an upgrade out of band, an apply here will clear the deferral.
 - **CMK identity.** Both modules require a user-assigned identity for CMK (the resource provider only supports `userAssignedIdentity` today). The `identity_type` field is kept for AVM compatibility but is validated to `UserAssignedIdentity`.
 - **`zones`.** The AVM input is omitted — zone redundancy is implicit when `high_availability = "Enabled"` in regions with availability zones, and ARM reports it back as `redundancyMode`.
-- **`access_policy_assignments`.** Not implemented — the `azurerm_managed_redis` resource doesn't model database-level access policies. If you need Entra-ID-only auth, use `access_keys_authentication_enabled = false` and manage policies via a sibling resource.
+- **`access_policy_assignments`.** Not implemented — database-level access policies are a separate ARM child resource and are out of scope here. If you need Entra-ID-only auth, use `access_keys_authentication_enabled = false` and manage policies via a sibling resource.
 - **`clustering_policy = "NoCluster"`.** Allowed (the underlying provider accepts it). The AVM module restricts to `EnterpriseCluster | OSSCluster | NoEviction` — different semantics.

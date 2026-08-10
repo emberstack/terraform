@@ -16,7 +16,7 @@ module "ddos_join" {
 
   name        = "DDoS Protection Plan Join"
   description = "Read and join VNets to the DDoS Protection Plan."
-  scope       = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  scope       = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
 
   actions = [
     "Microsoft.Network/ddosProtectionPlans/read",
@@ -33,7 +33,7 @@ module "aks_secrets_reader" {
 
   name        = "Azure Kubernetes Service RBAC Secrets Reader"
   description = "Read access to Kubernetes Secrets in AKS clusters via Azure RBAC."
-  scope       = data.azurerm_management_group.platform.id
+  scope       = "/providers/Microsoft.Management/managementGroups/platform"
 
   data_actions = [
     "Microsoft.ContainerService/managedClusters/secrets/read",
@@ -54,7 +54,7 @@ module "signalr_keys_reader" {
   source = "..."
 
   name               = "Azure SignalR Service Keys Reader"
-  scope              = data.azurerm_management_group.platform.id
+  scope              = "/providers/Microsoft.Management/managementGroups/platform"
   role_definition_id = "11111111-2222-3333-4444-555555555555"
 
   actions = [

@@ -4,12 +4,12 @@ Terraform module for a single **Azure Policy assignment** — works at any scope
 
 ## Why this exists alongside the AVM module
 
-The Azure AVM ecosystem provides [`Azure/avm-ptn-policyassignment/azurerm`](https://registry.terraform.io/modules/Azure/avm-ptn-policyassignment/azurerm/latest), but it is a *pattern* module — opinionated about non-compliance messaging and assumes a specific identity flow. This module is a **resource module**: a thin, predictable wrapper around the four `azurerm_<scope>_policy_assignment` resources, with the awkward bits (scope routing, identity setup, and the role assignments needed by DINE/Modify policies) handled internally.
+The Azure AVM ecosystem provides [`Azure/avm-ptn-policyassignment/azurerm`](https://registry.terraform.io/modules/Azure/avm-ptn-policyassignment/azurerm/latest), but it is a *pattern* module — opinionated about non-compliance messaging and assumes a specific identity flow. This module is a **resource module**: a thin, predictable wrapper around `Microsoft.Authorization/policyAssignments`, with the awkward bits (scope handling, identity setup, and the role assignments needed by DINE/Modify policies) handled internally.
 
 Highlights:
 
-- **Auto-routes scope**. Pass any ARM resource ID via `scope`; the module dispatches to the correct underlying resource.
-- **Identity + roles in one place**. Set `managed_identities.system_assigned = true` and `identity_role_assignments = { ... }` and the module wires the principal ID through to `azurerm_role_assignment` automatically.
+- **Any scope, one resource**. Pass any ARM resource ID via `scope`; it becomes the assignment's `parent_id`, so management group, subscription, resource group and resource scopes all share one code path.
+- **Identity + roles in one place**. Set `managed_identities.system_assigned = true` and `identity_role_assignments = { ... }` and the module wires the principal ID through to the role assignments automatically.
 - **HCL-native parameters**. `parameters`, `metadata`, etc. accept HCL objects — no manual `jsonencode`.
 
 ## Usage
@@ -22,7 +22,7 @@ module "audit_unmanaged_disks" {
 
   name                 = "audit-unmanaged-disks"
   display_name         = "Audit unmanaged disks"
-  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  scope                = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
   policy_definition_id = module.deny_unmanaged_disks.resource_id
 
   enforce = false  # audit-only
@@ -42,7 +42,7 @@ module "deploy_log_analytics_agent" {
   name                 = "deploy-la-agent"
   display_name         = "Deploy Log Analytics agent on VMs"
   scope                = "/subscriptions/${var.workload_subscription_id}"
-  policy_definition_id = data.azurerm_policy_definition_built_in.deploy_la_agent.id
+  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/${var.deploy_la_agent_definition_guid}"
   location             = "westeurope"
 
   managed_identities = {
@@ -50,7 +50,7 @@ module "deploy_log_analytics_agent" {
   }
 
   parameters = {
-    logAnalytics = { value = azurerm_log_analytics_workspace.platform.id }
+    logAnalytics = { value = var.platform_workspace_resource_id }
   }
 
   identity_role_assignments = {
@@ -61,7 +61,7 @@ module "deploy_log_analytics_agent" {
     }
     log_analytics_contributor_on_la = {
       role_definition_id_or_name = "Log Analytics Contributor"
-      scope                      = azurerm_log_analytics_workspace.platform.id
+      scope                      = var.platform_workspace_resource_id
     }
   }
 }
@@ -74,11 +74,11 @@ module "deny_public_blob" {
   source = "..."
 
   name                 = "deny-public-blob"
-  scope                = azurerm_resource_group.workload.id
+  scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-workload"
   policy_definition_id = module.deny_public_blob_def.resource_id
 
   not_scopes = [
-    azurerm_storage_account.public_assets.id,
+    "/subscriptions/${var.subscription_id}/resourceGroups/rg-workload/providers/Microsoft.Storage/storageAccounts/stpublicassets",
   ]
 
   non_compliance_messages = [
@@ -97,4 +97,4 @@ carries a description, and CI enforces that.
 ## Notes
 
 - **UAI role management.** When attaching a user-assigned identity, manage role assignments on the UAI itself — they outlive any single policy assignment, and `identity_role_assignments` here only targets the system-assigned identity.
-- **Scope routing.** The module fans out to one of the four `azurerm_<scope>_policy_assignment` resources. State addresses are stable per scope kind, so changing `scope` to a different kind is a recreate.
+- **Scope changes recreate.** `scope` is the assignment's `parent_id`, which forces replacement — an assignment at a subscription and the same assignment at a resource group are different ARM resources. The Terraform address does not move, but the resource is still destroyed and recreated, so a deny-effect assignment is unenforced for the length of the apply.

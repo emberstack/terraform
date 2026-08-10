@@ -63,7 +63,7 @@ module "tag_required" {
 
   name                = "require-environment-tag"
   display_name        = "Require environment tag"
-  management_group_id = data.azurerm_management_group.platform.id
+  management_group_id = "/providers/Microsoft.Management/managementGroups/platform"
 
   policy_rule = { ... }
 }

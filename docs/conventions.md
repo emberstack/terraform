@@ -14,7 +14,7 @@ azure-res-network-privatednszone
 
 | Segment | Values |
 |---|---|
-| provider | `azure` (azurerm), `entra` (azuread), `fortios` (FortiGate), `github` |
+| provider | `azure` (azapi), `entra` (azuread), `fortios` (FortiGate), `github` |
 | kind | `res`, `ptn`, `utl` |
 
 ### Kinds
@@ -55,6 +55,11 @@ Every module directory contains these four files. They are never folded together
 
 **Provider version constraints live only in `versions.tf`.** No `provider` blocks anywhere inside a
 module — see [Usage](usage.md#providers-are-the-callers-responsibility).
+
+**Declare only the providers a module uses itself.** A module that holds no `resource` or `data` blocks
+— a `utl` module, or a `ptn` module that only composes children — declares `required_version` and
+nothing else. Terraform aggregates `required_providers` across the whole module graph, so a child's
+constraint still applies; repeating it in the parent adds a second place to forget to update.
 
 Three optional additions sit alongside them:
 

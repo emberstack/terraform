@@ -27,7 +27,7 @@ Directory names follow AVM-style `<provider>-<kind>-<service>-<resource>`:
 
 | Segment | Values |
 |---|---|
-| provider | `azure` (azurerm), `entra` (azuread), `fortios` (FortiGate), `github` |
+| provider | `azure` (azapi), `entra` (azuread), `fortios` (FortiGate), `github` |
 | kind | `res`, `ptn`, `utl` |
 
 - **`res`** — resource module. Wraps a single logical resource plus tightly-coupled children.
@@ -43,7 +43,7 @@ modules carry nested submodules, documented alongside their parent.
 
 | Family | Provider | |
 |---|---|---|
-| Azure | `hashicorp/azurerm` | [Guide](docs/modules/azure.md) |
+| Azure | `Azure/azapi` | [Guide](docs/modules/azure.md) |
 | Entra ID | `hashicorp/azuread` | [Guide](docs/modules/entra.md) |
 | FortiGate | `fortinetdev/fortios` | [Guide](docs/modules/fortios.md) |
 | GitHub | `integrations/github` | [Guide](docs/modules/github.md) |

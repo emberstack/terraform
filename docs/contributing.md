@@ -191,7 +191,7 @@ If the sweep ever resolves zero directories it fails rather than reporting a gre
 
 `build` sets `TF_PLUGIN_CACHE_DIR` so every `init` shares one provider directory. That part is not
 optional — without it Terraform downloads a private copy of every provider per module, which runs to
-gigabytes and a dozen copies of azurerm.
+gigabytes and dozens of copies of the same fortios and azapi builds.
 
 Persisting that directory between runs with `actions/cache` is a different question, and the answer
 is no. `TF_PLUGIN_CACHE_DIR` never evicts: on each provider bump the restore-key pulls the previous
@@ -290,8 +290,10 @@ Re-run with `terraform init -upgrade`. This is a local artefact, never a reposit
    sibling in `src/modules/`. FortiGate modules need the `fortigate` platform segment.
 2. **Create all four files** — `main.tf`, `variables.tf`, `outputs.tf`, `versions.tf` — even if one is
    short. Never fold them together.
-3. **Pin versions** in `versions.tf`: `required_version` matching the rest of the tree, and a provider constraint with
-   both a floor and an upper bound below the next major.
+3. **Pin versions** in `versions.tf`: `required_version` matching the rest of the tree, and a constraint
+   with both a floor and an upper bound below the next major for every provider the module uses
+   *itself*. A module with no resources of its own — pure composition, or a `utl` module — declares
+   `required_version` alone and lets its children carry their own constraints.
 4. **Describe every variable and output.** The tree is at 100% description coverage; keep it there.
 5. **Validate inputs** — length bounds, enums, regex — to the azure/entra standard, except where the
    provider schema does not let you prove the accepted values.
@@ -452,9 +454,9 @@ to consumers, not a number to keep current — raising a floor forces every cons
 With `rangeStrategy: in-range-only` Renovate never rewrites a declared range, so no provider pull
 request opens and nothing waits on the dashboard either.
 
-That covers `hashicorp/azurerm` majors too. The azurerm major cap in `versions.tf` is unchanged, and moving
-to v5 stays a deliberate manual edit — the `management_group_id` migration that used to block it is
-done, but the remaining azurerm modules have not been checked against v5.
+That covers provider majors in general: `Azure/azapi`, `hashicorp/azuread`, `fortinetdev/fortios` and
+`integrations/github` all keep a hand-managed floor and a cap below the next major, and crossing a cap
+stays a deliberate manual edit with a plan behind it.
 
 **Terraform itself is tracked in two places, differently.** The `required_version` in every
 `versions.tf` is picked up by the built-in `terraform` manager, so the same rule leaves it alone.

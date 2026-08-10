@@ -57,7 +57,7 @@
       "schedule": ["before 10am on monday"]
     },
     {
-      "description": "Provider constraints are hand-managed. Every versions.tf carries a floor and a cap below the next major, and that declared range is a compatibility promise to consumers, not a number to keep current — so Renovate is not allowed to rewrite it. Left to the default strategy it answers azurerm 5.0 by turning \">= 4.81, < 5.0\" into \"< 5.1\", which deletes the floor and admits the very major the cap exists to exclude, across every azurerm module in one routine-looking pull request. in-range-only forbids that: widening to a new provider major is a deliberate, tested change a maintainer makes by hand. The dashboard approval stays as a backstop so nothing in this family can open a pull request unattended",
+      "description": "Provider constraints are hand-managed. Every versions.tf carries a floor and a cap below the next major, and that declared range is a compatibility promise to consumers, not a number to keep current — so Renovate is not allowed to rewrite it. Left to the default strategy it answers a new provider major by turning \">= 2.11, < 3.0\" into \"< 3.1\", which deletes the floor and admits the very major the cap exists to exclude, across every module declaring that provider in one routine-looking pull request. in-range-only forbids that: widening to a new provider major is a deliberate, tested change a maintainer makes by hand, because a provider major can rewrite a resource's schema under a module that plans clean today. The dashboard approval stays as a backstop so nothing in this family can open a pull request unattended",
       "matchManagers": ["terraform"],
       "rangeStrategy": "in-range-only",
       "dependencyDashboardApproval": true,

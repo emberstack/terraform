@@ -66,7 +66,7 @@ module "internal_zone_vnet_links" {
     hub_vnet = {
       private_dns_zone_resource_id = module.internal_zone.resource_id
       link_name                    = "hub-vnet"
-      virtual_network_resource_id  = data.azurerm_virtual_network.hub.id
+      virtual_network_resource_id  = var.hub_vnet_resource_id
       registration_enabled         = true
     }
   }
@@ -126,7 +126,7 @@ module "link" {
 
   name                         = "hub"
   private_dns_zone_resource_id = module.zone.resource_id
-  virtual_network_resource_id  = data.azurerm_virtual_network.hub.id
+  virtual_network_resource_id  = var.hub_vnet_resource_id
   tags                         = var.tags
 }
 ```

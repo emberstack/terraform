@@ -16,7 +16,7 @@ body:
     attributes:
       label: Version
       description: The `?ref=` you pinned, and your Terraform and provider versions.
-      placeholder: v0.1.0 / Terraform 1.15.8 / azurerm 4.81
+      placeholder: v0.1.0 / Terraform 1.15.8 / azapi 2.11
     validations:
       required: true
 

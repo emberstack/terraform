@@ -42,7 +42,7 @@ Two policy definitions, bundled into one initiative, applied via one assignment:
 module "aegis" {
   source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-ptn-policy-aegis-shield-tag-protection?ref=vX.Y.Z"
 
-  scope = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  scope = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
 }
 ```
 
@@ -65,10 +65,10 @@ module "aegis" {
 module "aegis_workload" {
   source = "..."
 
-  scope = azurerm_resource_group.workload.id
+  scope = "/subscriptions/${var.subscription_id}/resourceGroups/rg-workload"
 
   not_scopes = [
-    azurerm_storage_account.scratch.id,  # transient resources never shielded
+    "/subscriptions/${var.subscription_id}/resourceGroups/rg-workload/providers/Microsoft.Storage/storageAccounts/stscratch",  # transient resources never shielded
   ]
 }
 ```
@@ -93,7 +93,7 @@ module "exempt_legacy_workload" {
   source = "../azure-res-policy-exemption"
 
   name                 = "exempt-legacy-workload"
-  scope                = azurerm_resource_group.legacy.id
+  scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-legacy"
   policy_assignment_id = module.aegis.assignment_id
   exemption_category   = "Mitigated"
   description          = "Legacy workload retired under change ticket INFRA-1234."
