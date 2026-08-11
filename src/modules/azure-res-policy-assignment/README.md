@@ -97,4 +97,5 @@ carries a description, and CI enforces that.
 ## Notes
 
 - **UAI role management.** When attaching a user-assigned identity, manage role assignments on the UAI itself — they outlive any single policy assignment, and `identity_role_assignments` here only targets the system-assigned identity.
+- **`identity_role_assignments` follows the family pattern** for name lookup, generated GUID names and adoption — see [Role assignments](../../../docs/role-assignments.md). It differs in one way: the principal is always this assignment's own identity, so `principalType` is always `ServicePrincipal`.
 - **Scope changes recreate.** `scope` is the assignment's `parent_id`, which forces replacement — an assignment at a subscription and the same assignment at a resource group are different ARM resources. The Terraform address does not move, but the resource is still destroyed and recreated, so a deny-effect assignment is unenforced for the length of the apply.

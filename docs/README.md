@@ -8,6 +8,7 @@ Terraform modules for Azure, Entra ID, FortiGate and GitHub.
 | [Usage](usage.md) | You want to consume a module from your own configuration |
 | [Conventions](conventions.md) | You want to know how modules are named, laid out and styled |
 | [Contributing](contributing.md) | You want to add or change a module |
+| [Role assignments](role-assignments.md) | You are using a `role_assignments` input, or adopting a grant that already exists |
 
 ## Module reference
 

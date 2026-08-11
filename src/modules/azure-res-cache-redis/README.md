@@ -115,6 +115,9 @@ carries a description, and CI enforces that.
 - **`minimum_tls_version` and `port` are always sent.** ARM writes are full replaces, so a property left out of the body is reset to the service default. Both are pinned to Azure's current default rather than omitted, so an existing value cannot be silently downgraded by an unrelated change.
 
 - **`deferUpgrade` and `notifyKeyspaceEvents` are not managed.** They are left to the service default for the same reason the two above are pinned — they carry no security or connectivity consequence. If you defer an upgrade out of band, an apply here will clear the deferral.
+- **Role assignments.** Both maps — cluster-scope and per private endpoint — follow the family pattern
+  described in [Role assignments](../../../docs/role-assignments.md), including why the per-endpoint
+  keys must be snake_case.
 - **CMK identity.** Both modules require a user-assigned identity for CMK (the resource provider only supports `userAssignedIdentity` today). The `identity_type` field is kept for AVM compatibility but is validated to `UserAssignedIdentity`.
 - **`zones`.** The AVM input is omitted — zone redundancy is implicit when `high_availability = "Enabled"` in regions with availability zones, and ARM reports it back as `redundancyMode`.
 - **`access_policy_assignments`.** Not implemented — database-level access policies are a separate ARM child resource and are out of scope here. If you need Entra-ID-only auth, use `access_keys_authentication_enabled = false` and manage policies via a sibling resource.

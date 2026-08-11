@@ -150,9 +150,9 @@ Both pattern modules can be used standalone against any existing zone (this modu
 - **This module is `azapi`-only.** It declares `azapi` and `random`, not `azurerm`. The subscription comes
   from the configured `azapi` provider — `resource_group_name` stays a plain name, and the parent resource
   ID is assembled from the two.
-- **Role definition names are resolved by a subscription-scope lookup.** AzAPI has no equivalent of
-  azurerm's `role_definition_name`, so a `Microsoft.Authorization/roleDefinitions` list is read once when
-  `role_assignments` is non-empty. A value that is already a resource ID bypasses the lookup.
+- **Role assignments** behave the same here as in every module that exposes them — the name lookup, the
+  generated GUID name, and how to adopt an assignment that already exists are all described in
+  [Role assignments](../../../docs/role-assignments.md).
 - **SOA is a child resource.** ARM models the zone's SOA as a `privateDnsZones/SOA` record named `@`, not
   as part of the zone, so `soa_record` produces a second resource rather than an inline block.
 - **Private zones are global.** No `location` input; Azure tracks zones at the subscription level, not per-region.
@@ -176,10 +176,9 @@ terraform import 'azapi_resource.role_assignments["<key>"]' '<assignment-resourc
 terraform plan   # expect: No changes
 ```
 
-Importing `random_uuid` with the existing assignment GUID is the step that matters. `name` falls back
-to that UUID, so the adopted assignment keeps its identity; skip it and a fresh UUID is generated and
-the assignment is replaced — a brief RBAC gap on apply. Supplying `role_assignments[*].name` explicitly
-achieves the same thing if you would rather pin it in configuration.
+The two `random_uuid` / `role_assignments` lines are the part that needs care, and they apply to any
+adoption rather than just this migration — see
+[Role assignments § Adopting an assignment that already exists](../../../docs/role-assignments.md#adopting-an-assignment-that-already-exists).
 
 Zones that set `soa_record` gain a second resource (`azapi_resource.soa[0]`) with nothing in state
 behind it. Import it from `<zone-resource-id>/SOA/@` before planning.
