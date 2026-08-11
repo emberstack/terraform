@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "scope" {
   type        = string
@@ -17,13 +17,18 @@ variable "scope" {
 
 variable "protected_resources" {
   type = map(object({
-    resource_id            = string
-    scope                  = optional(string)
-    display_name           = optional(string)
-    description            = optional(string)
-    effect                 = optional(string)
-    enforce                = optional(bool)
-    non_compliance_message = optional(string)
+    resource_id = string
+    # Null selects the field's default, and the default differs by field:
+    # `scope`, `effect` and `non_compliance_message` fall back to the
+    # module-level input of the same name; `display_name`, `description` and
+    # `enforce` fall back to a built-in literal, with no module-level input to
+    # inherit. A value here always wins.
+    scope                  = optional(string, null)
+    display_name           = optional(string, null)
+    description            = optional(string, null)
+    effect                 = optional(string, null)
+    enforce                = optional(bool, null)
+    non_compliance_message = optional(string, null)
   }))
   default     = {}
   description = <<-EOT
@@ -44,9 +49,9 @@ variable "protected_resources" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — behaviour
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "effect" {
   type        = string
@@ -66,9 +71,9 @@ variable "non_compliance_message" {
   description = "Default non-compliance message. Per-resource override available."
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — definition placement
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "policy_management_group_id" {
   type        = string

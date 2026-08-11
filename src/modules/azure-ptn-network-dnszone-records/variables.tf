@@ -11,8 +11,8 @@ variable "dns_zone_resource_id" {
 
 variable "tags" {
   type        = map(string)
-  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
   default     = {}
+  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
 }
 
 variable "dns_zone_records" {
@@ -24,7 +24,9 @@ variable "dns_zone_records" {
 
     a_records    = optional(list(string))
     aaaa_records = optional(list(string))
-    cname_record = optional(string)
+    # Null is the "this entry is not a CNAME" sentinel, validated below. A `""`
+    # default would pass that check and send an empty `cname` to ARM.
+    cname_record = optional(string, null)
     mx_records = optional(list(object({
       preference = number
       exchange   = string
@@ -44,6 +46,7 @@ variable "dns_zone_records" {
       value = string
     })))
   }))
+  default     = {}
   description = <<-EOT
     Map of DNS records to create in the zone, keyed by a stable identifier.
 
@@ -60,7 +63,6 @@ variable "dns_zone_records" {
     - `TXT`   → `txt_records`   (list of TXT string values)
     - `CAA`   → `caa_records`   (list of `{flags, tag, value}`)
   EOT
-  default     = {}
 
   validation {
     condition     = alltrue([for k, v in var.dns_zone_records : contains(["A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT", "CAA"], v.type)])

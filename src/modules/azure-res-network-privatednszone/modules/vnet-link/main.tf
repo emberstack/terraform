@@ -1,6 +1,8 @@
 # =============================================================================
-# PRIVATE DNS ZONE VIRTUAL NETWORK LINK
+# AZURE PRIVATE DNS ZONE VIRTUAL NETWORK LINK
 # =============================================================================
+# `Microsoft.Network/privateDnsZones/virtualNetworkLinks`.
+#
 # One link per call. The parent `azure-res-network-privatednszone` module never
 # calls this submodule — links stay separate from the zone so that adding or
 # removing one never touches zone state. For many links in one apply, use

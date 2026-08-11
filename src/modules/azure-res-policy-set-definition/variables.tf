@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -30,7 +30,8 @@ variable "policy_definition_references" {
 
     The key is the `reference_id` (used as a stable handle for exemptions and
     compliance reporting), and `parameter_values` is the per-policy parameter
-    binding written as an HCL object (the module `jsonencode`s it).
+    binding written as an HCL object — it reaches ARM as a native object, not as
+    a JSON-encoded string.
 
     Example:
     ```
@@ -47,9 +48,9 @@ variable "policy_definition_references" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — scope
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "management_group_id" {
   type        = string
@@ -57,9 +58,9 @@ variable "management_group_id" {
   description = "ARM resource ID of the management group to scope the initiative to. Leave null to scope to the current subscription."
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — descriptive
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "description" {
   type        = string
@@ -100,4 +101,3 @@ variable "policy_definition_groups" {
   EOT
   nullable    = false
 }
-

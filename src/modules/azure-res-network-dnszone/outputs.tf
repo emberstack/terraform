@@ -1,3 +1,7 @@
+# Computed values are read through `try` because `terraform import` does not
+# apply `response_export_values` — during an import the export is simply absent,
+# and a bare reference would fail the whole evaluation.
+
 output "resource_id" {
   description = "Resource ID of the public DNS zone."
   value       = azapi_resource.this.id
@@ -31,10 +35,10 @@ output "role_assignments" {
 output "delegation" {
   description = "Parent-zone NS delegation record details (null when `parent_zone` is not set)."
   value = var.parent_zone != null ? {
-    resource_id      = azapi_resource.delegation[0].id
-    name             = azapi_resource.delegation[0].name
     fqdn             = try(azapi_resource.delegation[0].output.fqdn, null)
+    name             = azapi_resource.delegation[0].name
     parent_zone_id   = var.parent_zone.zone_id
     parent_zone_name = basename(var.parent_zone.zone_id)
+    resource_id      = azapi_resource.delegation[0].id
   } : null
 }

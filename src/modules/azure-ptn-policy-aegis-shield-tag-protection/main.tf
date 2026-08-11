@@ -1,6 +1,8 @@
 # =============================================================================
-# AEGIS — TAG-PROTECTION SHIELD (turnkey deny-delete pattern)
+# AEGIS — TAG-PROTECTION SHIELD
 # =============================================================================
+# Turnkey deny-delete pattern.
+#
 # Drop-in guardrail: anything carrying the tag `aegis = deny-delete` is
 # shielded from `delete` operations until the tag is removed.
 #

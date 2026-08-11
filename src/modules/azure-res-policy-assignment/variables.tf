@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -33,14 +33,21 @@ variable "scope" {
     - Subscription:     `/subscriptions/<sub>`
     - Resource group:   `/subscriptions/<sub>/resourceGroups/<rg>`
     - Resource:         `/subscriptions/<sub>/resourceGroups/<rg>/providers/<...>`
+
+    Segment names are matched case-insensitively, as ARM resource IDs are.
   EOT
   nullable    = false
+
   validation {
+    # ARM segment names are case-insensitive and Azure accepts e.g.
+    # `RESOURCEGROUPS`, so every matcher folds case. The `scope_kind` classifier
+    # in main.tf folds the same way, so anything accepted here is classified on
+    # its real shape rather than falling through to "subscription".
     condition = (
-      startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ||
-      can(regex("^/subscriptions/[^/]+$", var.scope)) ||
-      can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
-      can(regex("^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
+      can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
     )
     error_message = "scope must be a management group, subscription, resource group, or resource ARM resource ID."
   }
@@ -52,9 +59,9 @@ variable "policy_definition_id" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — display
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "display_name" {
   type        = string
@@ -68,9 +75,9 @@ variable "description" {
   description = "Long-form description shown in the portal."
 }
 
-# =============================================================================
-# Optional — behavior
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Optional — behaviour
+# -----------------------------------------------------------------------------
 
 variable "enforce" {
   type        = bool
@@ -152,9 +159,9 @@ variable "resource_selectors" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — identity
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "location" {
   type        = string
@@ -202,10 +209,14 @@ variable "identity_role_assignments" {
     `role_definition_id_or_name` accepts either a role display name or an ARM
     role-definition resource ID — auto-routed by the leading `/`.
 
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect: this module always sends `principalType = "ServicePrincipal"`, which
+    is ARM's equivalent, so the lookup that fails on a freshly created principal is
+    already skipped for every assignment.
+
     Has no effect when `managed_identities.system_assigned = false`. For UAIs,
     manage role assignments on the UAI directly (they outlive the policy
     assignment).
   EOT
   nullable    = false
 }
-

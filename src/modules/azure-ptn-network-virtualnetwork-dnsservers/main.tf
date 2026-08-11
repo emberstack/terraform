@@ -1,5 +1,5 @@
 # =============================================================================
-# VIRTUAL NETWORK DNS SERVERS (pattern module)
+# VIRTUAL NETWORK DNS SERVERS
 # =============================================================================
 # Sets the DNS servers on an existing virtual network without redeclaring the
 # vnet itself. No new Azure resource is created — only the existing vnet's

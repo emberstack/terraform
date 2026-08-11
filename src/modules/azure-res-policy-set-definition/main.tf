@@ -33,14 +33,6 @@ resource "azapi_resource" "this" {
       displayName = var.display_name
       metadata    = length(var.metadata) > 0 ? var.metadata : null
       parameters  = length(var.parameters) > 0 ? var.parameters : null
-      policyDefinitions = [
-        for reference_id, reference in var.policy_definition_references : {
-          groupNames                  = sort(tolist(coalesce(reference.policy_group_names, [])))
-          parameters                  = length(reference.parameter_values) > 0 ? reference.parameter_values : null
-          policyDefinitionId          = reference.policy_definition_id
-          policyDefinitionReferenceId = reference_id
-        }
-      ]
       policyDefinitionGroups = [
         for group_name, group in var.policy_definition_groups : {
           additionalMetadataId = group.additional_metadata_resource_id
@@ -50,7 +42,20 @@ resource "azapi_resource" "this" {
           name                 = group_name
         }
       ]
+      policyDefinitions = [
+        for reference_id, reference in var.policy_definition_references : {
+          groupNames                  = sort(tolist(coalesce(reference.policy_group_names, [])))
+          parameters                  = length(reference.parameter_values) > 0 ? reference.parameter_values : null
+          policyDefinitionId          = reference.policy_definition_id
+          policyDefinitionReferenceId = reference_id
+        }
+      ]
       policyType = "Custom"
     }
   }
+  # Same as `azure-res-policy-definition`: ARM injects
+  # `createdBy`/`createdOn`/`updatedBy`/`updatedOn` into `metadata` (measured
+  # 2026-08-10, on the `aegis` initiative), so a caller that omits `metadata`
+  # would compare null against a populated object forever.
+  ignore_null_property = true
 }

@@ -21,7 +21,20 @@
 data "azapi_client_config" "current" {}
 
 locals {
-  subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+  # The subscription the provider is configured against. Used to list the
+  # roleDefinitions catalogue. Built-in roles are present in every subscription,
+  # so this resolves any built-in name; a CUSTOM role defined in a different
+  # subscription is not in this listing and must be passed as a resource ID.
+  provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+
+  # A private endpoint must be created in the same subscription as the virtual
+  # network it attaches to, while the private-link resource it targets may sit in
+  # a different one (private-endpoint-overview, properties 4 and 5). So when an
+  # endpoint supplies only `resource_group_name`, that group is resolved in the
+  # SUBNET's subscription — not the service's and not the provider's.
+  private_endpoint_subscription_resource_ids = {
+    for k, v in var.private_endpoints : k => join("/", slice(split("/", v.subnet_resource_id), 0, 3))
+  }
 
   has_user_assigned   = length(var.managed_identities.user_assigned_resource_ids) > 0
   has_system_assigned = var.managed_identities.system_assigned
@@ -52,20 +65,28 @@ locals {
     for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
   } : {}
 
+  # Keyed by role name, not by assignment key: a role definition is a property of
+  # the ROLE, so two assignments naming the same role share one entry. Keying by
+  # assignment key would also force the two assignment keyspaces (service scope
+  # and per-endpoint scope) to share one map, where a service assignment keyed
+  # exactly "<pe>-<ra>" would resolve to the endpoint assignment's role.
+  # An entry that is already a resource ID falls through the lookup untouched.
   role_definition_resource_ids = {
-    for k, v in local.all_role_assignments : k => lookup(
-      local.role_definition_name_to_resource_id,
-      v.role_definition_id_or_name,
-      v.role_definition_id_or_name
-    )
+    for name in toset(concat(
+      [for v in values(var.role_assignments) : v.role_definition_id_or_name],
+      [for v in values(local.private_endpoint_role_assignments) : v.role_definition_id_or_name],
+    )) : name => lookup(local.role_definition_name_to_resource_id, name, name)
   }
 
+  # Per-PE role assignments, flattened across all (pe, ra) pairs.
   private_endpoint_role_assignments = merge([
     for pe_k, pe_v in var.private_endpoints : {
       for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
     }
   ]...)
 
+  # Both keyspaces together, used only to decide whether any role assignment
+  # exists at all — i.e. whether the roleDefinitions listing has to be read.
   all_role_assignments = merge(var.role_assignments, local.private_endpoint_role_assignments)
 
   # ARM returns request types in this order regardless of how they were sent, so
@@ -75,6 +96,8 @@ locals {
   # ARM names each ACL entry after the private endpoint *connection*
   # ("<service>.<guid>"), not the endpoint resource, and generates that name
   # itself. Map endpoint ID -> connection name from the live service.
+  # `terraform import` does not apply `response_export_values`, so the export is
+  # absent during an import and the `try` has to tolerate it.
   private_endpoint_connection_names = {
     for connection in try(data.azapi_resource.private_endpoint_connections[0].output.connections, []) :
     lower(connection.private_endpoint_id) => connection.name
@@ -82,7 +105,7 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# SignalR Service
+# SignalR service
 # -----------------------------------------------------------------------------
 
 resource "azapi_resource" "this" {
@@ -116,8 +139,10 @@ resource "azapi_resource" "this" {
       }
       upstream = {
         templates = [for endpoint in var.upstream_endpoints : {
-          auth = endpoint.user_assigned_identity_id == null ? null : {
-            managedIdentity = { resource = endpoint.user_assigned_identity_id }
+          # `resource` is the audience the issued token is minted for (the `aud`
+          # claim), not an identity resource ID.
+          auth = endpoint.managed_identity_audience == null ? null : {
+            managedIdentity = { resource = endpoint.managed_identity_audience }
             type            = "ManagedIdentity"
           }
           categoryPattern = endpoint.category_pattern
@@ -207,7 +232,6 @@ resource "azapi_update_resource" "network_acl" {
       }
     }
   }
-
   lifecycle {
     precondition {
       condition = alltrue([
@@ -257,13 +281,17 @@ resource "azapi_resource" "lock" {
 # -----------------------------------------------------------------------------
 # AzAPI has no equivalent of azurerm's `role_definition_name`, so role names are
 # resolved against a subscription-scope listing, as the AVM interfaces module
-# does. Assignment names are random UUIDs; `name` is exposed for callers adopting
-# an assignment that already exists.
+# does.
+#
+# Assignment names are random UUIDs. ARM makes the name the resource identity,
+# so deriving it from the principal would let an unknown-at-plan-time principal
+# ID force a replacement. `name` is exposed for callers adopting an existing
+# assignment.
 
 data "azapi_resource_list" "role_definitions" {
   count = length(local.all_role_assignments) > 0 ? 1 : 0
 
-  parent_id = local.subscription_resource_id
+  parent_id = local.provider_subscription_resource_id
   type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
   response_export_values = {
     results = "value[].{id: id, role_name: properties.roleName}"
@@ -288,7 +316,7 @@ resource "azapi_resource" "role_assignments" {
       description                        = each.value.description
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
 }
@@ -331,7 +359,7 @@ resource "azapi_resource" "private_endpoint" {
 
   location  = coalesce(each.value.location, var.location)
   name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.subscription_resource_id}/resourceGroups/${each.value.resource_group_name}"
+  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
   type      = "Microsoft.Network/privateEndpoints@2025-07-01"
   body = {
     properties = {
@@ -423,7 +451,7 @@ resource "azapi_resource" "private_endpoint_role_assignments" {
       description                        = each.value.description
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
 }

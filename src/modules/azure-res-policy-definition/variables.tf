@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -22,7 +22,8 @@ variable "display_name" {
 variable "policy_rule" {
   type        = any
   description = <<-EOT
-    The policy rule as an HCL value (object). The module will `jsonencode` it for the resource.
+    The policy rule as an HCL value (object). Sent to ARM as a native object; the
+    module does not `jsonencode` it.
 
     Typical shape:
     ```
@@ -38,9 +39,9 @@ variable "policy_rule" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — scope
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "management_group_id" {
   type        = string
@@ -48,9 +49,9 @@ variable "management_group_id" {
   description = "ARM resource ID of the management group to scope the definition to. Leave null to scope to the current subscription."
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional — descriptive
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "description" {
   type        = string
@@ -111,4 +112,3 @@ variable "metadata" {
   EOT
   nullable    = false
 }
-

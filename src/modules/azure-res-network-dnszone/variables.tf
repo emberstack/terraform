@@ -22,8 +22,8 @@ variable "resource_group_name" {
 
 variable "tags" {
   type        = map(string)
-  description = "Tags to apply to the DNS zone."
   default     = {}
+  description = "Tags to apply to the DNS zone."
 }
 
 variable "soa_record" {
@@ -36,6 +36,7 @@ variable "soa_record" {
     ttl          = optional(number, 3600)
     tags         = optional(map(string), {})
   })
+  default     = null
   description = <<-EOT
     Optional SOA record overrides. `email` is required when this is set; every other field defaults to
     Azure's own default for that timer. The defaults are restated here rather than left null because
@@ -43,21 +44,21 @@ variable "soa_record" {
 
     AVM `avm-res-network-dnszone` does not expose this — emberstack does.
   EOT
-  default     = null
 }
 
 variable "role_assignments" {
   type = map(object({
-    name                                   = optional(string)
+    name                                   = optional(string, null)
     role_definition_id_or_name             = string
     principal_id                           = string
-    description                            = optional(string)
+    description                            = optional(string, null)
     skip_service_principal_aad_check       = optional(bool, false)
-    condition                              = optional(string)
-    condition_version                      = optional(string)
-    delegated_managed_identity_resource_id = optional(string)
-    principal_type                         = optional(string)
+    condition                              = optional(string, null)
+    condition_version                      = optional(string, null)
+    delegated_managed_identity_resource_id = optional(string, null)
+    principal_type                         = optional(string, null)
   }))
+  default     = {}
   description = <<-EOT
     Map of zone-scope role assignments, keyed by a stable identifier.
 
@@ -69,22 +70,23 @@ variable "role_assignments" {
     are adopting an assignment that already exists, where the existing GUID must be supplied to avoid a
     destroy-and-recreate.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has no effect: the check
-    is an `azurerm` provider behaviour with no ARM equivalent.
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has no effect. ARM's
+    equivalent is `principalType`, which this module already exposes: set
+    `principal_type = "ServicePrincipal"` so ARM skips the directory lookup that fails on a principal
+    created moments earlier.
 
     Do not edit `principal_id` or `role_definition_id_or_name` on an existing key — ARM rejects the update.
     Add a new key and remove the old one instead.
 
     Mirrors AVM's standard `role_assignments` interface block.
   EOT
-  default     = {}
 
   validation {
-    error_message = "role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
     condition = alltrue([
       for assignment in var.role_assignments :
       assignment.name == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", assignment.name))
     ])
+    error_message = "role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
   }
 }
 
@@ -95,6 +97,7 @@ variable "parent_zone" {
     delegation_ttl  = optional(number, 3600)
     delegation_tags = optional(map(string), {})
   })
+  default     = null
   description = <<-EOT
     Optional parent-zone NS delegation. When set, creates an NS record in the parent zone whose entries are this zone's name servers — wiring up the subdomain delegation in one apply.
 
@@ -108,7 +111,6 @@ variable "parent_zone" {
 
     AVM `avm-res-network-dnszone` does not expose this — emberstack does.
   EOT
-  default     = null
 
   validation {
     condition     = var.parent_zone == null || can(regex("(?i)^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.network/dnszones/[^/]+$", var.parent_zone.zone_id))

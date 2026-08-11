@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required AVM-style interfaces
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -25,7 +25,7 @@ variable "parent_id" {
   nullable    = false
 
   validation {
-    condition     = can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
+    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
     error_message = "parent_id must be a resource group ARM resource ID, e.g. /subscriptions/<sub>/resourceGroups/<rg>."
   }
 }
@@ -50,9 +50,9 @@ variable "sku_capacity" {
   }
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Standard AVM-style optional interfaces
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "tags" {
   type        = map(string)
@@ -112,6 +112,11 @@ variable "role_assignments" {
 
     `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
     a full role definition resource ID. Auto-routed by the leading `/`.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
   EOT
   nullable    = false
 }
@@ -152,8 +157,42 @@ variable "private_endpoints" {
     })), {})
   }))
   default     = {}
-  description = "Private endpoints keyed by stable name. Shape mirrors AVM standard."
+  description = <<-EOT
+    Private endpoints keyed by stable name. Shape mirrors AVM standard.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
+
+    Map keys — both the endpoint keys and the nested `role_assignments` keys — must
+    be snake_case handles (`^[a-z0-9]+(_[a-z0-9]+)*$`), see the validations below.
+  EOT
   nullable    = false
+
+  validation {
+    condition     = alltrue([for k in keys(var.private_endpoints) : can(regex("^[a-z0-9]+(_[a-z0-9]+)*$", k))])
+    error_message = <<-EOT
+      Every private_endpoints key must match ^[a-z0-9]+(_[a-z0-9]+)*$ (lower-case
+      snake_case). A per-endpoint role assignment is addressed in state by joining
+      the endpoint key and the assignment key with "-", so a key containing "-"
+      would let two different pairs collide on one address: ("a-b", "c") and
+      ("a", "b-c") both produce "a-b-c".
+    EOT
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for pe_k, pe_v in var.private_endpoints : [
+        for ra_k in keys(pe_v.role_assignments) : can(regex("^[a-z0-9]+(_[a-z0-9]+)*$", ra_k))
+      ]
+    ]))
+    error_message = <<-EOT
+      Every key of a private_endpoints[*].role_assignments map must match
+      ^[a-z0-9]+(_[a-z0-9]+)*$ (lower-case snake_case), for the same reason as the
+      endpoint keys: the two are joined with "-" to form the state address.
+    EOT
+  }
 }
 
 variable "private_endpoints_manage_dns_zone_group" {
@@ -185,9 +224,9 @@ variable "diagnostic_settings" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # SignalR-specific inputs
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "service_mode" {
   type        = string
@@ -220,8 +259,8 @@ variable "public_network_access_enabled" {
 
 variable "local_auth_enabled" {
   type        = bool
-  default     = true
-  description = "Whether AccessKey-based authentication is enabled. Default: true. Set false to require Entra ID."
+  default     = false
+  description = "Whether AccessKey-based authentication is enabled. Default: false (Entra ID only). Set to true only when a caller cannot yet use Entra-ID-based passwordless auth."
   nullable    = false
 }
 
@@ -299,12 +338,22 @@ variable "upstream_endpoints" {
     category_pattern          = optional(list(string), ["*"])
     event_pattern             = optional(list(string), ["*"])
     hub_pattern               = optional(list(string), ["*"])
-    user_assigned_identity_id = optional(string, null)
+    managed_identity_audience = optional(string, null)
   }))
   default     = []
   description = <<-EOT
     Upstream endpoints for `Serverless` service mode. Each entry routes events
     matching the given category/event/hub patterns to the URL template.
+
+    - `managed_identity_audience`: when set, the service authenticates to the
+      upstream with a managed identity and this value becomes the token's
+      audience (`aud` claim) — the target's Application ID URI or resource URI,
+      shown in the portal as "Audience in the issued token". It is *not* a
+      managed identity resource ID. Which identity is used follows the
+      service's own `managed_identities` configuration.
+
+    Breaking change: this field was previously named `user_assigned_identity_id`,
+    which described neither its value nor its effect.
   EOT
   nullable    = false
 }
@@ -323,9 +372,9 @@ variable "network_acl" {
   })
   default     = null
   description = <<-EOT
-    Network ACL configuration. Managed via the sibling
-    ACL — exactly one per
-    SignalR service.
+    Network ACL configuration. Written by `azapi_update_resource.network_acl` in
+    this module, after the private endpoints exist — exactly one ACL per SignalR
+    service.
 
     - `default_action`: `Allow` or `Deny` (default: `Deny`).
     - `public_network`: optional public-network-side rules.

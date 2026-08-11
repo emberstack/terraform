@@ -41,10 +41,10 @@ output "access_keys" {
   EOT
   sensitive   = true
   value = var.include_access_keys ? {
-    primary_key                 = try(azapi_resource_action.access_keys[0].output.primaryKey, null)
-    secondary_key               = try(azapi_resource_action.access_keys[0].output.secondaryKey, null)
     primary_connection_string   = try(azapi_resource_action.access_keys[0].output.primaryConnectionString, null)
+    primary_key                 = try(azapi_resource_action.access_keys[0].output.primaryKey, null)
     secondary_connection_string = try(azapi_resource_action.access_keys[0].output.secondaryConnectionString, null)
+    secondary_key               = try(azapi_resource_action.access_keys[0].output.secondaryKey, null)
   } : null
 }
 
@@ -92,6 +92,6 @@ output "role_assignments" {
 
 output "resource" {
   description = "The full SignalR Service resource. Sensitive — prefer the focused outputs."
-  value       = azapi_resource.this
   sensitive   = true
+  value       = azapi_resource.this
 }

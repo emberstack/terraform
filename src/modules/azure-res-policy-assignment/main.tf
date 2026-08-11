@@ -32,15 +32,24 @@ locals {
     null
   )
 
+  # `identity` is written by the `dynamic "identity"` block below, but its
+  # `principal_id` child is computed. The `try` is for the shape, not the value:
+  # `identity[0]` is absent when refreshing or importing an assignment that has
+  # no identity. An unknown `principal_id` propagates through `try` unchanged, as
+  # it must — the role assignments below depend on it.
   system_identity_principal_id = local.has_system_assigned ? try(azapi_resource.this.identity[0].principal_id, null) : null
 
   # Kept only to preserve the `scope_kind` output; the resource itself no longer
   # branches on it, since the scope is just `parent_id`.
+  #
+  # Every matcher folds case, matching the `scope` validation: ARM segment names
+  # are case-insensitive, so a `RESOURCEGROUPS`-cased scope is a valid resource
+  # group and must not fall through to the "subscription" default.
   scope_kind = (
-    startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ? "management_group" :
-    can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/", var.scope)) ? "resource" :
-    can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ? "resource_group" :
-    can(regex("^/subscriptions/[^/]+/providers/", var.scope)) ? "resource" :
+    can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope)) ? "management_group" :
+    can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/", var.scope)) ? "resource" :
+    can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ? "resource_group" :
+    can(regex("(?i)^/subscriptions/[^/]+/providers/", var.scope)) ? "resource" :
     "subscription"
   )
 
@@ -57,6 +66,10 @@ locals {
     )
   }
 }
+
+# -----------------------------------------------------------------------------
+# Policy assignment
+# -----------------------------------------------------------------------------
 
 resource "azapi_resource" "this" {
   location  = var.location
@@ -113,9 +126,20 @@ resource "azapi_resource" "this" {
 # -----------------------------------------------------------------------------
 # Identity role assignments
 # -----------------------------------------------------------------------------
+# AzAPI has no equivalent of azurerm's `role_definition_name`, so role names are
+# resolved against a subscription-scope listing, as the AVM interfaces module
+# does.
+#
+# Assignment names are random UUIDs. ARM makes the name the resource identity,
+# so deriving it from the principal would let an unknown-at-plan-time principal
+# ID force a replacement. `name` is exposed for callers adopting an existing
+# assignment.
+#
 # Only for the SYSTEM-assigned identity: it is created and destroyed with the
 # assignment, so its grants belong here. A user-assigned identity outlives any
-# single assignment, so the caller manages roles on the UAI itself.
+# single assignment, so the caller manages roles on the UAI itself. The
+# principal ID is unknown until apply, which is why the resources below are also
+# gated on `local.has_system_assigned`.
 
 data "azapi_resource_list" "role_definitions" {
   count = length(var.identity_role_assignments) > 0 ? 1 : 0
@@ -148,7 +172,12 @@ resource "azapi_resource" "identity_role_assignments" {
       roleDefinitionId                   = local.role_definition_resource_ids[each.key]
     }
   }
-  # ARM stores "" for an unset description, which would diff against the null
-  # sent by a caller that supplies none.
+  # Measured 2026-08-10 against roleAssignments@2022-04-01: ARM echoes an unset
+  # `condition`, `conditionVersion`, `delegatedManagedIdentityResourceId` and
+  # `description` back as explicit null, NOT as "". So a null sent here already
+  # matches what ARM returns and this flag is belt-and-braces, not load-bearing.
+  # Corroborated by azure-res-network-dnszone and -privatednszone, which write the
+  # same body without the flag and plan clean against live assignments.
+  # Kept because removing it is a behaviour change with nothing to gain.
   ignore_null_property = true
 }

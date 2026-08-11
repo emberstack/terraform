@@ -21,11 +21,17 @@
 locals {
   # Kept only to preserve the `scope_kind` output; the resource itself no longer
   # branches on it, since the scope is just `parent_id`.
+  #
+  # Every matcher folds case (`(?i)`) because ARM ID segment names are
+  # case-insensitive: `resourceGroups` can arrive as `RESOURCEGROUPS` and Azure
+  # accepts it. The `scope` validation folds case identically, so casing alone can
+  # never change which branch a scope lands on. The trailing `subscription` is the
+  # answer for a plain `/subscriptions/<id>`, not an error path.
   scope_kind = (
-    startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ? "management_group" :
-    can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/", var.scope)) ? "resource" :
-    can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ? "resource_group" :
-    can(regex("^/subscriptions/[^/]+/providers/", var.scope)) ? "resource" :
+    can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope)) ? "management_group" :
+    can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/", var.scope)) ? "resource" :
+    can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ? "resource_group" :
+    can(regex("(?i)^/subscriptions/[^/]+/providers/", var.scope)) ? "resource" :
     "subscription"
   )
 }

@@ -1,8 +1,8 @@
 # =============================================================================
 # AZURE PRIVATE DNS RECORDS
 # =============================================================================
-# Works against any existing zone — this module's parent, an AVM-managed zone,
-# or a hand-created one.
+# Works against any existing zone — this module's sibling
+# `azure-res-network-privatednszone`, an AVM-managed zone, or a hand-created one.
 #
 # Record sets carry their tags in `properties.metadata`, NOT in resource `tags`.
 # They are not tracked resources and have no `location`.
@@ -141,9 +141,9 @@ resource "azapi_resource" "txt" {
   body = {
     properties = {
       metadata = merge(var.tags, each.value.tags)
+      ttl      = each.value.ttl
       # ARM nests each TXT string in its own record as a single-element array.
       txtRecords = [for value in each.value.txt_records : { value = [value] }]
-      ttl        = each.value.ttl
     }
   }
   response_export_values = local.fqdn_export

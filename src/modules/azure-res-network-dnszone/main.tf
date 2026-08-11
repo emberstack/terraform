@@ -46,6 +46,10 @@ locals {
   }
 }
 
+# -----------------------------------------------------------------------------
+# Public DNS zone
+# -----------------------------------------------------------------------------
+
 resource "azapi_resource" "this" {
   location  = "global"
   name      = var.name
@@ -58,14 +62,13 @@ resource "azapi_resource" "this" {
   tags                   = var.tags
 }
 
-# =============================================================================
-# SOA RECORD
-# =============================================================================
+# -----------------------------------------------------------------------------
+# SOA record
+# -----------------------------------------------------------------------------
 # ARM models SOA as a child record set named `@`, not as part of the zone.
 # `var.soa_record` defaults every timer to Azure's own value rather than leaving
 # it null, because this is written as a full PUT and an omitted timer is reset.
 # `host` and `serialNumber` are server-assigned and deliberately not sent.
-# =============================================================================
 
 resource "azapi_resource" "soa" {
   count = var.soa_record != null ? 1 : 0
@@ -88,9 +91,9 @@ resource "azapi_resource" "soa" {
   }
 }
 
-# =============================================================================
-# ROLE ASSIGNMENTS (zone scope)
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Role assignments
+# -----------------------------------------------------------------------------
 # AzAPI has no equivalent of azurerm's `role_definition_name`, so role names are
 # resolved against a subscription-scope listing, as the AVM interfaces module
 # does.
@@ -99,7 +102,6 @@ resource "azapi_resource" "soa" {
 # so deriving it from the principal would let an unknown-at-plan-time principal
 # ID force a replacement. `name` is exposed for callers adopting an existing
 # assignment.
-# =============================================================================
 
 data "azapi_resource_list" "role_definitions" {
   count = length(var.role_assignments) > 0 ? 1 : 0
@@ -134,13 +136,12 @@ resource "azapi_resource" "role_assignments" {
   }
 }
 
-# =============================================================================
-# PARENT ZONE NS DELEGATION
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Parent zone NS delegation
+# -----------------------------------------------------------------------------
 # Creates an NS record in the parent zone to delegate this subdomain. The parent
 # zone's resource ID is the record's `parent_id` directly. The deploying
 # principal must have write access to the parent zone's RG.
-# =============================================================================
 
 resource "azapi_resource" "delegation" {
   count = var.parent_zone != null ? 1 : 0

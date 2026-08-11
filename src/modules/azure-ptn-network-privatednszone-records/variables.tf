@@ -11,8 +11,8 @@ variable "private_dns_zone_resource_id" {
 
 variable "tags" {
   type        = map(string)
-  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
   default     = {}
+  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
 }
 
 variable "private_dns_zone_records" {
@@ -24,7 +24,9 @@ variable "private_dns_zone_records" {
 
     a_records    = optional(list(string))
     aaaa_records = optional(list(string))
-    cname_record = optional(string)
+    # Null is the "this entry is not a CNAME" sentinel, validated below. A `""`
+    # default would pass that check and send an empty `cname` to ARM.
+    cname_record = optional(string, null)
     mx_records = optional(list(object({
       preference = number
       exchange   = string
@@ -38,6 +40,7 @@ variable "private_dns_zone_records" {
     })))
     txt_records = optional(list(string))
   }))
+  default     = {}
   description = <<-EOT
     Map of private DNS records to create in the zone, keyed by a stable identifier.
 
@@ -54,7 +57,6 @@ variable "private_dns_zone_records" {
 
     Note: Azure private DNS does not support NS or CAA records — those types are intentionally absent.
   EOT
-  default     = {}
 
   validation {
     condition     = alltrue([for k, v in var.private_dns_zone_records : contains(["A", "AAAA", "CNAME", "MX", "PTR", "SRV", "TXT"], v.type)])

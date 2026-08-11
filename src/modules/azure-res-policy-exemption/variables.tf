@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -22,14 +22,18 @@ variable "scope" {
     - Subscription:     `/subscriptions/<sub>`
     - Resource group:   `/subscriptions/<sub>/resourceGroups/<rg>`
     - Resource:         `/subscriptions/<sub>/resourceGroups/<rg>/providers/<...>`
+
+    Segment names are matched case-insensitively, because ARM treats them that
+    way (`/RESOURCEGROUPS/` is a valid ID Azure accepts).
   EOT
   nullable    = false
+
   validation {
     condition = (
-      startswith(var.scope, "/providers/Microsoft.Management/managementGroups/") ||
-      can(regex("^/subscriptions/[^/]+$", var.scope)) ||
-      can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
-      can(regex("^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
+      can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
     )
     error_message = "scope must be a management group, subscription, resource group, or resource ARM resource ID."
   }
@@ -52,9 +56,9 @@ variable "exemption_category" {
   }
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Optional
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "display_name" {
   type        = string
@@ -89,4 +93,3 @@ variable "metadata" {
   description = "Exemption metadata as an HCL object. Common keys: `requestedBy`, `approvedBy`, `ticket`, etc."
   nullable    = false
 }
-

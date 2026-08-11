@@ -1,6 +1,6 @@
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Required AVM-style interfaces
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "name" {
   type        = string
@@ -25,7 +25,7 @@ variable "parent_id" {
   nullable    = false
 
   validation {
-    condition     = can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
+    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
     error_message = "parent_id must be a resource group ARM resource ID, e.g. /subscriptions/<sub>/resourceGroups/<rg>."
   }
 }
@@ -42,9 +42,9 @@ variable "sku_name" {
   nullable    = false
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Standard AVM-style optional interfaces
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 variable "tags" {
   type        = map(string)
@@ -83,9 +83,9 @@ variable "managed_identities" {
     - `system_assigned`: enable a system-assigned identity.
     - `user_assigned_resource_ids`: set of UAI resource IDs to attach.
 
-    When `customer_managed_key_encryption` is set, a UAI must be attached
-    (the AzureRM provider's `customer_managed_key` block requires
-    `user_assigned_identity_id`).
+    When `customer_managed_key_encryption` is set, a UAI must be attached: only
+    `UserAssignedIdentity` is supported by the Microsoft.Cache/redisEnterprise
+    API today.
   EOT
   nullable    = false
 }
@@ -94,7 +94,7 @@ variable "customer_managed_key_encryption" {
   type = object({
     key_encryption_key_url             = string
     identity_type                      = string
-    user_assigned_identity_resource_id = optional(string)
+    user_assigned_identity_resource_id = optional(string, null)
   })
   default     = null
   description = <<-EOT
@@ -144,7 +144,9 @@ variable "role_assignments" {
     existing GUID must be supplied to avoid a destroy-and-recreate.
 
     `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect: the check is an `azurerm` provider behaviour with no ARM equivalent.
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
   EOT
   nullable    = false
 }
@@ -185,8 +187,43 @@ variable "private_endpoints" {
     })), {})
   }))
   default     = {}
-  description = "Private endpoints keyed by stable name. Shape mirrors AVM standard."
+  description = <<-EOT
+    Private endpoints keyed by stable name. Shape mirrors AVM standard.
+
+    Keys of this map, and of each nested `role_assignments` map, must be snake_case
+    handles: a per-endpoint role assignment's state address is the two keys joined
+    with `-`, so the keys themselves must not contain that separator.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
+  EOT
   nullable    = false
+
+  validation {
+    condition     = alltrue([for k in keys(var.private_endpoints) : can(regex("^[a-z0-9]+(_[a-z0-9]+)*$", k))])
+    error_message = <<-EOT
+      Every private_endpoints key must match ^[a-z0-9]+(_[a-z0-9]+)*$ (lower-case
+      snake_case). A per-endpoint role assignment is addressed in state by joining
+      the endpoint key and the assignment key with "-", so a key containing "-"
+      would let two different pairs collide on one address: ("a-b", "c") and
+      ("a", "b-c") both produce "a-b-c".
+    EOT
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for pe_k, pe_v in var.private_endpoints : [
+        for ra_k in keys(pe_v.role_assignments) : can(regex("^[a-z0-9]+(_[a-z0-9]+)*$", ra_k))
+      ]
+    ]))
+    error_message = <<-EOT
+      Every key of a private_endpoints[*].role_assignments map must match
+      ^[a-z0-9]+(_[a-z0-9]+)*$ (lower-case snake_case), for the same reason as the
+      endpoint keys: the two are joined with "-" to form the state address.
+    EOT
+  }
 }
 
 variable "private_endpoints_manage_dns_zone_group" {
@@ -220,9 +257,9 @@ variable "diagnostic_settings" {
   nullable    = false
 }
 
-# =============================================================================
-# Cluster-specific inputs (mirroring AVM where applicable)
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Cluster-specific inputs — mirroring AVM where applicable
+# -----------------------------------------------------------------------------
 
 variable "high_availability" {
   type        = string
@@ -252,12 +289,11 @@ variable "public_network_access" {
   }
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Database-specific inputs
-# =============================================================================
+# -----------------------------------------------------------------------------
 # These map onto the cluster's default database (every Redis Enterprise cluster
 # has exactly one database named `default`).
-# =============================================================================
 
 variable "clustering_policy" {
   type        = string

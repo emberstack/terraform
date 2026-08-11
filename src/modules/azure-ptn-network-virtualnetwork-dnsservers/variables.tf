@@ -4,7 +4,7 @@ variable "virtual_network_resource_id" {
   nullable    = false
 
   validation {
-    condition     = can(regex("^(?i)/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.Network/virtualNetworks/[^/]+$", var.virtual_network_resource_id))
+    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.Network/virtualNetworks/[^/]+$", var.virtual_network_resource_id))
     error_message = "virtual_network_resource_id must be an ARM resource ID of a virtual network, e.g. /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<name>."
   }
 }

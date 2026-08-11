@@ -148,15 +148,34 @@ around, an ordering dependency invisible in the graph.
 # TITLE IN CAPS
 # =============================================================================
 # Optional body — only when there is non-obvious behaviour to explain. When
-# present, close it with a fourth rule.
+# present, close it with a third rule.
 # =============================================================================
 ```
 
 A banner is **not** a mandatory file header; roughly half the module `main.tf` files carry one. Add a banner
-when you have something non-obvious to say. A title-only rule is fine as a section marker in a long
-multi-resource file; what makes a banner noise is a body that restates the resource type.
+when you have something non-obvious to say. What makes a banner noise is a body that restates the resource
+type — that already sits in the title parenthetical and in the `type` argument below.
 
 Box-drawing characters (`╔ ║ ╚`) are not used anywhere in the tree. Don't introduce them.
+
+### Section separators
+
+A banner opens a *file*. A separator divides one *within* a file, and the two never share a rule character:
+`=` belongs to the banner, `-` to a separator. Every azure module follows this.
+
+```hcl
+# -----------------------------------------------------------------------------
+# Role assignments
+# -----------------------------------------------------------------------------
+# Optional body, below the closing rule and not itself closed by one.
+```
+
+Two rule lines, each `# ` followed by exactly 77 dashes — 79 columns, matching the banner's width. Sentence
+case, not ALL-CAPS; one em-dash qualifier is fine, a parenthetical is not. Once a `main.tf` carries any
+separator at all, the primary resource gets one too, so no resource is left sitting under the file banner
+alone.
+
+The 79-column figure governs rule lines only. Comment prose wraps wherever it reads best.
 
 ## Azure input shapes
 

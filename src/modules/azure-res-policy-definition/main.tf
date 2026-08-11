@@ -37,4 +37,9 @@ resource "azapi_resource" "this" {
       policyType  = "Custom"
     }
   }
+  # `metadata` is null unless the caller sets it, and ARM never returns it empty:
+  # it injects `createdBy`/`createdOn`/`updatedBy`/`updatedOn` (measured
+  # 2026-08-10). Without this, a caller that omits `metadata` compares null
+  # against that populated object and carries a diff that never converges.
+  ignore_null_property = true
 }

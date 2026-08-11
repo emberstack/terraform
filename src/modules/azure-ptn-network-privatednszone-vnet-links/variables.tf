@@ -1,7 +1,7 @@
 variable "tags" {
   type        = map(string)
-  description = "Tags to merge into every link. Per-link `tags` win over these on key collisions."
   default     = {}
+  description = "Tags to merge into every link. Per-link `tags` win over these on key collisions."
 }
 
 variable "private_dns_zone_vnet_links" {
@@ -10,9 +10,13 @@ variable "private_dns_zone_vnet_links" {
     link_name                    = string
     virtual_network_resource_id  = string
     registration_enabled         = optional(bool, false)
-    resolution_policy            = optional(string)
-    tags                         = optional(map(string), {})
+    # Defaults to null, which leaves `resolutionPolicy` to Azure — it sets the
+    # value itself on privatelink zones. Set it explicitly only to pin one of
+    # the two accepted values; see the validation below.
+    resolution_policy = optional(string, null)
+    tags              = optional(map(string), {})
   }))
+  default     = {}
   description = <<-EOT
     Map of virtual-network → private-DNS-zone links, keyed by a stable identifier.
 
@@ -29,7 +33,6 @@ variable "private_dns_zone_vnet_links" {
     - `resolution_policy` (optional, no module default) — `"Default"` or `"NxDomainRedirect"` (the latter is a privatelink-zone-only feature). Omitting it sends `null`, leaving Azure to apply its own default rather than the module forcing one.
     - `tags` (optional) — tags applied to the link; merged with `var.tags`.
   EOT
-  default     = {}
 
   validation {
     condition     = alltrue([for k, v in var.private_dns_zone_vnet_links : can(regex("(?i)^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.network/privatednszones/[^/]+$", v.private_dns_zone_resource_id))])

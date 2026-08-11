@@ -1,6 +1,8 @@
 # =============================================================================
-# AEGIS — RESOURCE SHIELD (explicit deny-delete protection by resource ID)
+# AEGIS — RESOURCE SHIELD
 # =============================================================================
+# Explicit deny-delete protection by resource ID.
+#
 # Protects specific Azure resources from deletion via a DenyAction policy
 # assigned per resource. Unlike the tag-based Aegis Shield, this targets
 # resources explicitly by ARM ID — useful when tagging is not practical or

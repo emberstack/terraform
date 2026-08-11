@@ -74,6 +74,6 @@ output "role_assignments" {
 
 output "resource" {
   description = "The full cluster resource. Sensitive — prefer the focused outputs."
-  value       = azapi_resource.this
   sensitive   = true
+  value       = azapi_resource.this
 }

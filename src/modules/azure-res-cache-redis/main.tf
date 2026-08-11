@@ -21,7 +21,20 @@
 data "azapi_client_config" "current" {}
 
 locals {
-  subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+  # The subscription the provider is configured against. Used to list the
+  # roleDefinitions catalogue. Built-in roles are present in every subscription,
+  # so this resolves any built-in name; a CUSTOM role defined in a different
+  # subscription is not in this listing and must be passed as a resource ID.
+  provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+
+  # A private endpoint must be created in the same subscription as the virtual
+  # network it attaches to, while the private-link resource it targets may sit in
+  # a different one (private-endpoint-overview, properties 4 and 5). So when an
+  # endpoint supplies only `resource_group_name`, that group is resolved in the
+  # SUBNET's subscription — not the cluster's and not the provider's.
+  private_endpoint_subscription_resource_ids = {
+    for k, v in var.private_endpoints : k => join("/", slice(split("/", v.subnet_resource_id), 0, 3))
+  }
 
   has_user_assigned   = length(var.managed_identities.user_assigned_resource_ids) > 0
   has_system_assigned = var.managed_identities.system_assigned
@@ -33,7 +46,8 @@ locals {
   )
 
   # ARM spells these lower-camel, unlike the PascalCase used for the resource
-  # identity `type` right above. Accept either from the caller.
+  # identity `type` right above. Only `UserAssignedIdentity` passes validation
+  # today, so only that spelling is reachable.
   customer_managed_key_identity_type = (
     var.customer_managed_key_encryption == null ? null :
     lower(var.customer_managed_key_encryption.identity_type) == "systemassignedidentity"
@@ -44,13 +58,14 @@ locals {
     for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
   } : {}
 
-  # An entry that is already a resource ID falls through the lookup untouched.
+  # Keyed by role name, not by assignment key — a role definition is per role, and
+  # the same role may be assigned at both scopes. An entry that is already a
+  # resource ID falls through the lookup untouched and maps to itself.
   role_definition_resource_ids = {
-    for k, v in local.all_role_assignments : k => lookup(
-      local.role_definition_name_to_resource_id,
-      v.role_definition_id_or_name,
-      v.role_definition_id_or_name
-    )
+    for name in toset(concat(
+      [for v in values(var.role_assignments) : v.role_definition_id_or_name],
+      [for v in values(local.private_endpoint_role_assignments) : v.role_definition_id_or_name],
+    )) : name => lookup(local.role_definition_name_to_resource_id, name, name)
   }
 
   # Per-PE role assignments, flattened across all (pe, ra) pairs.
@@ -60,8 +75,9 @@ locals {
     }
   ]...)
 
-  # One lookup covers both scopes; the keyspaces cannot collide because the
-  # cluster-scoped keys come from a different input map.
+  # Only the length of this is read: it gates the roleDefinitions listing so the
+  # data source is skipped when there is no assignment at either scope. A key
+  # collision between the two keyspaces is harmless for that purpose.
   all_role_assignments = merge(var.role_assignments, local.private_endpoint_role_assignments)
 }
 
@@ -108,8 +124,10 @@ resource "azapi_resource" "this" {
 # -----------------------------------------------------------------------------
 # Default database
 # -----------------------------------------------------------------------------
-# ARM keeps the database separate from the cluster. `port`, `redisVersion` and
-# `deferUpgrade` are server-assigned and not sent.
+# ARM keeps the database separate from the cluster. `redisVersion` and
+# `deferUpgrade` are left to the service and not sent; `port` IS sent, for the
+# same reason as `minimum_tls_version` — a full-replace write would otherwise
+# reset it to the default and move the port clients connect to.
 
 resource "azapi_resource" "database" {
   name      = "default"
@@ -128,13 +146,13 @@ resource "azapi_resource" "database" {
         args = m.args
         name = m.name
       }]
-      port = var.port
       persistence = {
         aofEnabled   = var.persistence_append_only_file_backup_frequency != null
         aofFrequency = var.persistence_append_only_file_backup_frequency
         rdbEnabled   = var.persistence_redis_database_backup_frequency != null
         rdbFrequency = var.persistence_redis_database_backup_frequency
       }
+      port = var.port
     }
   }
   response_export_values = { port = "properties.port" }
@@ -173,7 +191,7 @@ resource "azapi_resource" "lock" {
 data "azapi_resource_list" "role_definitions" {
   count = length(local.all_role_assignments) > 0 ? 1 : 0
 
-  parent_id = local.subscription_resource_id
+  parent_id = local.provider_subscription_resource_id
   type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
   response_export_values = {
     results = "value[].{id: id, role_name: properties.roleName}"
@@ -198,13 +216,13 @@ resource "azapi_resource" "role_assignments" {
       description                        = each.value.description
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
 }
 
 # -----------------------------------------------------------------------------
-# Diagnostic settings (cluster-scoped)
+# Diagnostic settings
 # -----------------------------------------------------------------------------
 # `Microsoft.Insights/diagnosticSettings` has never shipped a stable API version;
 # 2021-05-01-preview is the newest and what AVM uses.
@@ -243,7 +261,7 @@ resource "azapi_resource" "private_endpoint" {
 
   location  = coalesce(each.value.location, var.location)
   name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.subscription_resource_id}/resourceGroups/${each.value.resource_group_name}"
+  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
   type      = "Microsoft.Network/privateEndpoints@2025-07-01"
   body = {
     properties = {
@@ -337,7 +355,7 @@ resource "azapi_resource" "private_endpoint_role_assignments" {
       description                        = each.value.description
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
 }
