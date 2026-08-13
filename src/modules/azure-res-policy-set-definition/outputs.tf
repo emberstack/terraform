@@ -12,8 +12,3 @@ output "display_name" {
   description = "Initiative display name."
   value       = var.display_name
 }
-
-output "resource" {
-  description = "The full policy set definition resource. One resource covers both management-group and subscription scope, so consumers see the same shape either way."
-  value       = azapi_resource.this
-}

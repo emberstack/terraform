@@ -37,6 +37,10 @@ output "private_endpoints" {
     `private_ip_address` is not carried on the endpoint itself — ARM surfaces the allocated
     address through the DNS zone group's record sets, falling back to `customDnsConfigs`. It
     is null until the endpoint has been created and, without a DNS zone group, may stay null.
+
+    `role_assignments` nests each endpoint's own assignments, keyed by the nested key the
+    caller wrote — not by the composite `<endpoint>-<assignment>` key used to address them
+    in state. `lock_resource_id` is null on an endpoint that sets no `lock`.
   EOT
   value = {
     for k, v in azapi_resource.private_endpoint : k => {
@@ -48,6 +52,16 @@ output "private_endpoints" {
         v.output.custom_dns_configs[0].ipAddresses[0],
         null
       )
+      # `private_endpoint_lock` only has an instance for endpoints that set `lock`,
+      # so an absent key here means "no lock", not an error.
+      lock_resource_id = try(azapi_resource.private_endpoint_lock[k].id, null)
+      role_assignments = {
+        for composite_k, ra in local.private_endpoint_role_assignments : ra.ra_key => {
+          resource_id  = azapi_resource.private_endpoint_role_assignments[composite_k].id
+          principal_id = ra.principal_id
+        }
+        if ra.pe_key == k
+      }
     }
   }
 }
@@ -72,7 +86,7 @@ output "role_assignments" {
   }
 }
 
-output "resource" {
-  description = "The full cluster resource. Prefer the focused outputs; this one is an escape hatch. Not marked sensitive: the body carries no key material — `customerManagedKeyEncryption` holds a Key Vault key URL, which is a reference gated by RBAC, and the access keys come from the separate `access_keys` output."
-  value       = azapi_resource.this
+output "lock_resource_id" {
+  description = "Resource ID of the management lock on the cluster. Null when `lock` is not set."
+  value       = try(azapi_resource.lock[0].id, null)
 }

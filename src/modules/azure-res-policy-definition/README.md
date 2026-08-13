@@ -8,7 +8,7 @@ The Azure Verified Modules ecosystem currently has no resource module for `polic
 
 This module:
 
-- accepts `policy_rule`, `parameters`, and `metadata` as **HCL values** (the module handles `jsonencode`),
+- accepts `policy_rule`, `parameters`, and `metadata` as **HCL values**, sent to ARM as native objects — neither the caller nor the module `jsonencode`s them,
 - supports both **subscription** (default) and **management group** scope via `management_group_id`,
 - exposes the same minimal output surface as the rest of the emberstack policy modules so they compose cleanly.
 

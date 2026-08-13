@@ -51,13 +51,23 @@ locals {
   )
 
   # ARM spells this lower-camel, unlike the PascalCase used for the resource
-  # identity `type` right above. `UserAssignedIdentity` is the only value the
-  # variable's own validation accepts, so it is the only spelling to map; a
-  # `systemAssignedIdentity` branch here would be unreachable code. If the
-  # resource provider ever accepts the other spelling, widen the validation in
-  # variables.tf and this local together.
+  # identity `type` right above, so the AVM-shaped input is translated rather
+  # than passed through.
+  #
+  # The table carries only the spelling the resource provider implements today.
+  # redisEnterprise declares `systemAssignedIdentity` in its schema on every
+  # version through 2025-07-01, but documents it as unimplemented — "Only
+  # userAssignedIdentity is supported in this API version". Widening means adding
+  # a row here AND the matching value to the variable's validation; a missing row
+  # fails the plan on this lookup rather than sending a value ARM rejects.
+  customer_managed_key_identity_types = {
+    UserAssignedIdentity = "userAssignedIdentity"
+  }
+
   customer_managed_key_identity_type = (
-    var.customer_managed_key_encryption == null ? null : "userAssignedIdentity"
+    var.customer_managed_key_encryption == null
+    ? null
+    : local.customer_managed_key_identity_types[var.customer_managed_key_encryption.identity_type]
   )
 
   role_definition_name_to_resource_id = length(local.all_role_assignments) > 0 ? {
@@ -77,7 +87,10 @@ locals {
   # Per-PE role assignments, flattened across all (pe, ra) pairs.
   private_endpoint_role_assignments = merge([
     for pe_k, pe_v in var.private_endpoints : {
-      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
+      # `ra_key` is carried alongside `pe_key` so outputs can regroup these by
+      # endpoint and key them the way the caller wrote them, rather than exposing
+      # the composite state-addressing key.
+      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k, ra_key = ra_k })
     }
   ]...)
 
@@ -107,9 +120,9 @@ resource "azapi_resource" "this" {
           keyEncryptionKeyUrl = var.customer_managed_key_encryption.key_encryption_key_url
         }
       }
-      highAvailability    = var.high_availability
+      highAvailability    = var.high_availability_enabled ? "Enabled" : "Disabled"
       minimumTlsVersion   = var.minimum_tls_version
-      publicNetworkAccess = var.public_network_access
+      publicNetworkAccess = var.public_network_access_enabled ? "Enabled" : "Disabled"
     }
     sku = {
       name = var.sku_name
@@ -134,6 +147,17 @@ resource "azapi_resource" "this" {
 # `deferUpgrade` are left to the service and not sent; `port` IS sent, for the
 # same reason as `minimum_tls_version` — a full-replace write would otherwise
 # reset it to the default and move the port clients connect to.
+#
+# This resource deliberately carries no `ignore_null_property`, unlike several
+# siblings. It sends nulls — `geoReplication`, and the two persistence
+# frequencies — and they are safe here because ARM OMITS those keys rather than
+# materialising them, and azapi's `ignore_missing_property` defaults to true, so
+# a configured property the response leaves out is not compared. The flag is only
+# load-bearing when the response comes back with a value the config sent as null.
+# Checked 2026-08-13 against the 2025-07-01 REST spec examples: a database with no
+# geo-replication returns no `geoReplication` at all, and `persistence` echoes only
+# the keys actually in use (an RDB database returns `rdbEnabled`/`rdbFrequency` and
+# no `aof*` pair). Confirm with a plan before adding a null that ARM does populate.
 
 resource "azapi_resource" "database" {
   name      = "default"
@@ -142,7 +166,7 @@ resource "azapi_resource" "database" {
   body = {
     properties = {
       accessKeysAuthentication = var.access_keys_authentication_enabled ? "Enabled" : "Disabled"
-      clientProtocol           = var.enable_non_ssl_port ? "Plaintext" : "Encrypted"
+      clientProtocol           = var.non_ssl_port_enabled ? "Plaintext" : "Encrypted"
       clusteringPolicy         = var.clustering_policy
       evictionPolicy           = var.eviction_policy
       geoReplication = var.geo_replication_group_name == null ? null : {
@@ -223,6 +247,25 @@ resource "azapi_resource" "role_assignments" {
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
       roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
+    }
+  }
+
+  lifecycle {
+    precondition {
+      # An unresolved name falls through the `lookup` default in
+      # `role_definition_resource_ids` and reaches ARM as a bare string in
+      # `roleDefinitionId`, which fails with an error naming neither the role nor
+      # this assignment. Every resolved value is an ARM ID, so it starts with "/".
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
+      error_message = <<-EOT
+        role_assignments["${each.key}"] names the role "${each.value.role_definition_id_or_name}",
+        which matched no role definition.
+
+        Pass a role's display name exactly as Azure spells it, or a full
+        role-definition resource ID. Names resolve against the roleDefinitions
+        catalogue of the provider's subscription, so a CUSTOM role defined in a
+        different subscription is not listed there and must be passed as an ID.
+      EOT
     }
   }
 }
@@ -362,6 +405,23 @@ resource "azapi_resource" "private_endpoint_role_assignments" {
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
       roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
+    }
+  }
+
+  lifecycle {
+    precondition {
+      # Same fall-through as the cluster-scope assignments above.
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
+      error_message = <<-EOT
+        A role assignment on private endpoint "${each.value.pe_key}" (map key
+        "${each.key}") names the role "${each.value.role_definition_id_or_name}",
+        which matched no role definition.
+
+        Pass a role's display name exactly as Azure spells it, or a full
+        role-definition resource ID. Names resolve against the roleDefinitions
+        catalogue of the provider's subscription, so a CUSTOM role defined in a
+        different subscription is not listed there and must be passed as an ID.
+      EOT
     }
   }
 }

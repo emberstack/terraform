@@ -118,7 +118,7 @@ carries a description, and CI enforces that.
 - **Role assignments.** Both maps — cluster-scope and per private endpoint — follow the family pattern
   described in [Role assignments](../../../docs/role-assignments.md), including why the per-endpoint
   keys must be snake_case.
-- **CMK identity.** Both modules require a user-assigned identity for CMK (the resource provider only supports `userAssignedIdentity` today). The `identity_type` field is kept for AVM compatibility but is validated to `UserAssignedIdentity`.
-- **`zones`.** The AVM input is omitted — zone redundancy is implicit when `high_availability = "Enabled"` in regions with availability zones, and ARM reports it back as `redundancyMode`.
+- **CMK identity.** Both modules require a user-assigned identity for CMK. `identity_type` is optional and defaults to `UserAssignedIdentity`, the only value `Microsoft.Cache/redisEnterprise` implements — its schema declares `systemAssignedIdentity` as well, but documents it as unsupported on every version through `2025-07-01`. The value is translated to ARM's own casing and sent, not hardcoded, so widening is a validation change rather than a code change.
+- **`zones`.** The AVM input is omitted — zone redundancy is implicit when `high_availability_enabled = true` in regions with availability zones, and ARM reports it back as `redundancyMode`.
 - **`access_policy_assignments`.** Not implemented — database-level access policies are a separate ARM child resource and are out of scope here. If you need Entra-ID-only auth, use `access_keys_authentication_enabled = false` and manage policies via a sibling resource.
 - **`clustering_policy = "NoCluster"`.** Allowed (the underlying provider accepts it). The AVM module restricts to `EnterpriseCluster | OSSCluster | NoEviction` — different semantics.

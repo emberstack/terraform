@@ -7,9 +7,25 @@ variable "name" {
   description = "Public DNS zone name (fully-qualified, e.g., `dev.acme.example`)."
   nullable    = false
 
+  # Azure's rule for dnsZones: 1-63 characters total, 2 to 34 dot-separated labels,
+  # each label made of alphanumerics, underscores and hyphens. Checked 2026-08-13
+  # against the resource-name-rules table.
+  #
+  # The regex this replaced was wrong in both directions. It bounded each label but
+  # never the whole name, so a 64-character zone passed here and failed at ARM. And
+  # it was stricter than Azure in requiring an all-alphabetic final label and
+  # disallowing underscores, so it rejected legal names like `db.k8s1`.
+  #
+  # The no-leading and no-trailing hyphen rule is not in that table — it is DNS
+  # itself (RFC 1123: labels start and end alphanumeric). The old regex enforced it,
+  # so it is kept deliberately rather than loosened away with the rest.
   validation {
-    condition     = can(regex("^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$", var.name))
-    error_message = "name must be a valid fully-qualified DNS zone name."
+    condition = (
+      length(var.name) >= 1 && length(var.name) <= 63 &&
+      length(split(".", var.name)) >= 2 && length(split(".", var.name)) <= 34 &&
+      alltrue([for label in split(".", var.name) : can(regex("^[A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?$", label))])
+    )
+    error_message = "name must be 1–63 characters across 2–34 dot-separated labels, each containing only letters, digits, underscores and hyphens, and not starting or ending with a hyphen (e.g. `dev.example.com`)."
   }
 }
 

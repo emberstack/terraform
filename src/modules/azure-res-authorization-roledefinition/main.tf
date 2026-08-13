@@ -26,7 +26,14 @@ resource "azapi_resource" "this" {
   body = {
     properties = {
       assignableScopes = length(var.assignable_scopes) > 0 ? sort(tolist(var.assignable_scopes)) : [var.scope]
-      description      = var.description
+      # Sent as "" rather than null when unset. Whether ARM echoes an unset
+      # description back as "" or omits the key is unverified — a live catalogue
+      # returns it populated on every role that has one (checked 2026-08-13), and
+      # telling the two apart needs a description-less role to exist. "" is right
+      # either way: it matches an echoed "", and is ignored via azapi's
+      # `ignore_missing_property` if the key is omitted. Preferred over
+      # `ignore_null_property`, which would also make a description unclearable.
+      description = coalesce(var.description, "")
       permissions = [{
         actions        = sort(tolist(var.actions))
         dataActions    = sort(tolist(var.data_actions))

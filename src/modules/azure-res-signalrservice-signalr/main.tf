@@ -86,7 +86,10 @@ locals {
   # Per-PE role assignments, flattened across all (pe, ra) pairs.
   private_endpoint_role_assignments = merge([
     for pe_k, pe_v in var.private_endpoints : {
-      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k })
+      # `ra_key` is carried alongside `pe_key` so outputs can regroup these by
+      # endpoint and key them the way the caller wrote them, rather than exposing
+      # the composite state-addressing key.
+      for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k, ra_key = ra_k })
     }
   ]...)
 
@@ -383,6 +386,25 @@ resource "azapi_resource" "role_assignments" {
       roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
+
+  lifecycle {
+    precondition {
+      # An unresolved name falls through the `lookup` default in
+      # `role_definition_resource_ids` and reaches ARM as a bare string in
+      # `roleDefinitionId`, which fails with an error naming neither the role nor
+      # this assignment. Every resolved value is an ARM ID, so it starts with "/".
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
+      error_message = <<-EOT
+        role_assignments["${each.key}"] names the role "${each.value.role_definition_id_or_name}",
+        which matched no role definition.
+
+        Pass a role's display name exactly as Azure spells it, or a full
+        role-definition resource ID. Names resolve against the roleDefinitions
+        catalogue of the provider's subscription, so a CUSTOM role defined in a
+        different subscription is not listed there and must be passed as an ID.
+      EOT
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -516,6 +538,23 @@ resource "azapi_resource" "private_endpoint_role_assignments" {
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
       roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
+    }
+  }
+
+  lifecycle {
+    precondition {
+      # Same fall-through as the service-scope assignments above.
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
+      error_message = <<-EOT
+        A role assignment on private endpoint "${each.value.pe_key}" (map key
+        "${each.key}") names the role "${each.value.role_definition_id_or_name}",
+        which matched no role definition.
+
+        Pass a role's display name exactly as Azure spells it, or a full
+        role-definition resource ID. Names resolve against the roleDefinitions
+        catalogue of the provider's subscription, so a CUSTOM role defined in a
+        different subscription is not listed there and must be passed as an ID.
+      EOT
     }
   }
 }

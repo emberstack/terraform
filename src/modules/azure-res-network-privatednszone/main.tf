@@ -119,4 +119,23 @@ resource "azapi_resource" "role_assignments" {
       roleDefinitionId                   = local.role_definition_resource_ids[each.key]
     }
   }
+
+  lifecycle {
+    precondition {
+      # An unresolved name falls through the `lookup` default in
+      # `role_definition_resource_ids` and reaches ARM as a bare string in
+      # `roleDefinitionId`, which fails with an error naming neither the role nor
+      # this assignment. Every resolved value is an ARM ID, so it starts with "/".
+      condition     = startswith(local.role_definition_resource_ids[each.key], "/")
+      error_message = <<-EOT
+        role_assignments["${each.key}"] names the role "${each.value.role_definition_id_or_name}",
+        which matched no role definition.
+
+        Pass a role's display name exactly as Azure spells it, or a full
+        role-definition resource ID. Names resolve against the roleDefinitions
+        catalogue of the provider's subscription, so a CUSTOM role defined in a
+        different subscription is not listed there and must be passed as an ID.
+      EOT
+    }
+  }
 }

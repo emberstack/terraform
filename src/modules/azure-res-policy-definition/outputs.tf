@@ -12,8 +12,3 @@ output "display_name" {
   description = "Policy definition display name."
   value       = var.display_name
 }
-
-output "resource" {
-  description = "The full policy definition resource."
-  value       = azapi_resource.this
-}

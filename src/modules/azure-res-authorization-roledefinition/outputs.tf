@@ -29,8 +29,3 @@ output "scope" {
   description = "Scope at which the role is anchored."
   value       = var.scope
 }
-
-output "resource" {
-  description = "The full role definition resource."
-  value       = azapi_resource.this
-}

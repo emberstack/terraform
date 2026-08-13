@@ -4,12 +4,32 @@
 
 variable "name" {
   type        = string
-  description = "Assignment name. 1–24 chars at subscription/resource scope; 1–64 chars at management-group scope."
+  description = <<-EOT
+    Assignment name. ARM's length limit depends on the scope: 1–64 characters at
+    subscription, resource group and resource scope, but only 1–24 at management
+    group scope. Both bounds are enforced against `scope`.
+  EOT
   nullable    = false
 
   validation {
     condition     = length(var.name) >= 1 && length(var.name) <= 64
     error_message = "name must be between 1 and 64 characters."
+  }
+
+  # Cross-variable check against `scope`. Note the direction — the tighter limit
+  # is on MANAGEMENT GROUP scope, not on subscription scope, which is the opposite
+  # of what it reads like and the opposite of what this module's own description
+  # claimed until 2026-08-13. Source: the Microsoft resource-name-rules table
+  # ("1-64 resource name, 1-24 resource name at management group scope"). The 64
+  # is corroborated by a live subscription carrying 63-character assignment names;
+  # the 24 is documentation only, since confirming it needs a failed create.
+  validation {
+    condition = (
+      can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope))
+      ? length(var.name) <= 24
+      : true
+    )
+    error_message = "name must be 24 characters or fewer at management-group scope, which is ARM's limit there. Subscription, resource group and resource scope allow up to 64."
   }
 }
 
@@ -97,8 +117,8 @@ variable "parameters" {
   type        = any
   default     = {}
   description = <<-EOT
-    Parameter values bound at this assignment, as an HCL object. The module
-    `jsonencode`s it.
+    Parameter values bound at this assignment, as an HCL object. Sent to ARM as a
+    native object; the module does not `jsonencode` it.
 
     Each entry shape:
     ```

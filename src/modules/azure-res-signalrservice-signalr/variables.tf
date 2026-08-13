@@ -45,12 +45,33 @@ variable "sku_name" {
 variable "sku_capacity" {
   type        = number
   default     = 1
-  description = "SKU capacity (unit count). Allowed values depend on the SKU tier."
+  description = <<-EOT
+    SKU capacity (unit count). The accepted set depends on `sku_name`:
+
+    - `Free_F1`     — 1
+    - `Standard_S1` — 1 to 10, then 20, 30 … 100
+    - `Premium_P1`  — 1 to 10, then 20, 30 … 100
+    - `Premium_P2`  — 100, 200 … 1000
+
+    Note the module default of 1 is not valid for `Premium_P2`; that SKU starts at
+    100, so set this explicitly when using it.
+
+    Only those four SKU names are checked. Any other `sku_name` leaves the capacity
+    to ARM, so a SKU introduced later is not blocked here.
+  EOT
   nullable    = false
 
+  # A plain 1–100 range was wrong in both directions: it accepted 11–19, which no
+  # SKU offers, and rejected the 200–1000 that Premium_P2 requires. Sets taken from
+  # ResourceSku.capacity in the signalr 2024-03-01 swagger, checked 2026-08-13.
   validation {
-    condition     = var.sku_capacity >= 1 && var.sku_capacity <= 100
-    error_message = "sku_capacity must be between 1 and 100."
+    condition = (
+      var.sku_name == "Free_F1" ? var.sku_capacity == 1 :
+      contains(["Standard_S1", "Premium_P1"], var.sku_name) ? contains([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], var.sku_capacity) :
+      var.sku_name == "Premium_P2" ? contains([100, 200, 300, 400, 500, 600, 700, 800, 900, 1000], var.sku_capacity) :
+      true
+    )
+    error_message = "sku_capacity is not a unit count this sku_name accepts. Free_F1 allows 1; Standard_S1 and Premium_P1 allow 1–10 then 20, 30 … 100; Premium_P2 allows 100, 200 … 1000."
   }
 }
 

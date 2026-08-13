@@ -29,6 +29,21 @@ The listing is read once, only when the map is non-empty, and always at the **pr
 subscription. Built-in roles exist in every subscription, so any built-in name resolves. A **custom**
 role defined in a different subscription is not in that listing — pass it as a resource ID.
 
+### A name that does not resolve fails the plan
+
+A value that is neither a resource ID nor a role name present in the listing used to fall through the
+lookup unchanged and reach ARM as a bare string in `roleDefinitionId`. ARM rejects it with an error
+that names neither the role nor the assignment that carried it — on a map of twenty assignments, that
+is a hunt.
+
+Every role-assignment resource therefore carries a `precondition` asserting the value resolved, which
+reports the offending map key and the value it was given. The test is that a resolved value is always
+an ARM ID and so begins with `/`; the resource-ID form passes untouched, because it already does. A
+misspelled role name is now a plan-time error instead of an apply-time one.
+
+For the two per-endpoint maps the message also names the private endpoint, since their state address
+is the two keys joined with `-` and the composite alone does not say which endpoint went wrong.
+
 ## The assignment name is a GUID, and it is the resource's identity
 
 ARM makes the role assignment's *name* a caller-supplied GUID, and that name is its identity. The

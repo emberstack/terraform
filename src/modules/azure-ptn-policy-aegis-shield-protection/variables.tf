@@ -32,8 +32,10 @@ variable "protected_resources" {
   }))
   default     = {}
   description = <<-EOT
-    Map of resources to protect, keyed by assignment name (1–24 chars for
-    subscription/resource scope, 1–64 for management group).
+    Map of resources to protect. Each key becomes a policy assignment's ARM name,
+    so ARM's length limit lands on the key: 1–64 characters at subscription,
+    resource group and resource scope, and only 1–24 at management group scope.
+    Enforced by `azure-res-policy-assignment` against each entry's effective scope.
 
     Required per entry:
     - `resource_id` — full ARM resource ID to protect.

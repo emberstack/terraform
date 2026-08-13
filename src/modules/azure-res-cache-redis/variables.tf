@@ -7,9 +7,15 @@ variable "name" {
   description = "The name of the Azure Managed Redis (Redis Enterprise) cluster."
   nullable    = false
 
+  # ARM's own pattern is `^(?=.{1,60}$)[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`, described as
+  # "1-60 characters ... There can be no leading nor trailing nor consecutive
+  # hyphens". Terraform's regex engine is RE2 and has no lookahead, so the length
+  # half is checked separately; the alternation covers all three hyphen rules by
+  # itself. Checked 2026-08-13 against ClusterNameParameter in the redisenterprise
+  # 2025-07-01 swagger — note 60, not 63, and a LEADING hyphen is rejected too.
   validation {
-    condition     = can(regex("^[A-Za-z0-9-]{1,63}$", var.name)) && !can(regex("--", var.name)) && !can(regex("-$", var.name))
-    error_message = "name must be 1–63 chars, alphanumeric and hyphens, no consecutive hyphens, and not ending with a hyphen."
+    condition     = length(var.name) >= 1 && length(var.name) <= 60 && can(regex("^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$", var.name))
+    error_message = "name must be 1–60 characters of letters, digits and hyphens, with no leading, trailing or consecutive hyphens."
   }
 }
 
@@ -46,32 +52,29 @@ variable "sku_name" {
 # Optional — cluster
 # -----------------------------------------------------------------------------
 
-variable "high_availability" {
-  type        = string
-  default     = "Enabled"
+variable "high_availability_enabled" {
+  type        = bool
+  default     = true
   description = <<-EOT
-    High-availability mode: `Enabled` (default — primary + replica shards across
-    two nodes, zone-redundant in regions with AZs) or `Disabled` (single shard;
-    halves cost; only suitable for dev/test).
+    Whether high availability is on. Default: true — primary and replica shards
+    across two nodes, zone-redundant in regions with availability zones. False
+    gives a single shard: halves the cost, and is only suitable for dev/test.
   EOT
   nullable    = false
-
-  validation {
-    condition     = contains(["Enabled", "Disabled"], var.high_availability)
-    error_message = "high_availability must be 'Enabled' or 'Disabled'."
-  }
 }
 
-variable "public_network_access" {
-  type        = string
-  default     = "Disabled"
-  description = "Whether the cluster is reachable from the public internet. `Enabled` or `Disabled` (default)."
-  nullable    = false
+variable "public_network_access_enabled" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Whether the cluster is reachable from the public internet. Default: false.
 
-  validation {
-    condition     = contains(["Enabled", "Disabled"], var.public_network_access)
-    error_message = "public_network_access must be 'Enabled' or 'Disabled'."
-  }
+    Deliberately the opposite default to the input of the same name on
+    `azure-res-signalrservice-signalr`. A cache holds data and is normally reached
+    over a private endpoint, so closed is the posture to fall into by accident.
+    Matching the two defaults would open every cluster that never set this.
+  EOT
+  nullable    = false
 }
 
 variable "minimum_tls_version" {
@@ -132,10 +135,10 @@ variable "eviction_policy" {
   }
 }
 
-variable "enable_non_ssl_port" {
+variable "non_ssl_port_enabled" {
   type        = bool
   default     = false
-  description = "Enable the non-SSL port (Plaintext client protocol). Default: false (Encrypted only)."
+  description = "Whether the non-SSL port is open (the Plaintext client protocol). Default: false — Encrypted only."
   nullable    = false
 }
 
@@ -243,7 +246,7 @@ variable "managed_identities" {
 variable "customer_managed_key_encryption" {
   type = object({
     key_encryption_key_url             = string
-    identity_type                      = string
+    identity_type                      = optional(string, "UserAssignedIdentity")
     user_assigned_identity_resource_id = optional(string, null)
   })
   default     = null
@@ -252,16 +255,20 @@ variable "customer_managed_key_encryption" {
 
     - `key_encryption_key_url`: full versioned key URL
       (e.g. `https://<vault>.vault.azure.net/keys/<name>/<version>`).
-    - `identity_type`: only `UserAssignedIdentity` is supported by the
-      Microsoft.Cache/redisEnterprise API today.
+    - `identity_type`: which identity fetches the key. Optional — the only value
+      Microsoft.Cache/redisEnterprise implements today is `UserAssignedIdentity`,
+      which is the default. The ARM schema also declares `systemAssignedIdentity`
+      but documents it as unsupported in every version through `2025-07-01`.
     - `user_assigned_identity_resource_id`: ARM resource ID of the UAI used
       to fetch the key. Must also be present in
       `managed_identities.user_assigned_resource_ids`.
   EOT
 
+  # Paired with `local.customer_managed_key_identity_types` in main.tf, which maps
+  # the accepted value to ARM's own casing. Widen both or neither.
   validation {
-    condition     = var.customer_managed_key_encryption == null || try(var.customer_managed_key_encryption.identity_type, "") == "UserAssignedIdentity"
-    error_message = "customer_managed_key_encryption.identity_type must be 'UserAssignedIdentity' (the only value the resource provider accepts today)."
+    condition     = var.customer_managed_key_encryption == null || contains(["UserAssignedIdentity"], var.customer_managed_key_encryption.identity_type)
+    error_message = "customer_managed_key_encryption.identity_type must be 'UserAssignedIdentity' (the only value the resource provider implements today)."
   }
 
   validation {
