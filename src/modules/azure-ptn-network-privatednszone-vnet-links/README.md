@@ -25,13 +25,13 @@ module "links" {
   private_dns_zone_vnet_links = {
     blob_to_hub = {
       private_dns_zone_resource_id = module.zone_blob.resource_id
-      link_name                    = "hub"
+      name                         = "hub"
       virtual_network_resource_id  = var.hub_vnet_resource_id
     }
 
     vault_to_hub = {
       private_dns_zone_resource_id = module.zone_vault.resource_id
-      link_name                    = "hub"
+      name                         = "hub"
       virtual_network_resource_id  = var.hub_vnet_resource_id
     }
   }
@@ -49,14 +49,14 @@ module "links" {
   private_dns_zone_vnet_links = {
     internal_to_spoke = {
       private_dns_zone_resource_id = module.zone_internal.resource_id
-      link_name                    = "spoke"
+      name                         = "spoke"
       virtual_network_resource_id  = var.spoke_vnet_resource_id
       registration_enabled         = true
     }
 
     privatelink_blob_to_spoke = {
       private_dns_zone_resource_id = module.zone_blob.resource_id
-      link_name                    = "spoke"
+      name                         = "spoke"
       virtual_network_resource_id  = var.spoke_vnet_resource_id
       resolution_policy            = "NxDomainRedirect"
     }
@@ -72,7 +72,7 @@ carries a description, and CI enforces that.
 ## Notes
 
 - **State address stability.** Each entry creates `azapi_resource.this["<key>"]`. The key is your IaC
-  handle and is not part of the ARM ID — that comes from the zone plus `link_name` — so renaming a key
+  handle and is not part of the ARM ID — that comes from the zone plus `name` — so renaming a key
   recreates the link. Pick stable keys.
 - **`registration_enabled` only applies to non-privatelink zones.** Azure rejects auto-registration on a
   privatelink zone.
@@ -83,7 +83,5 @@ carries a description, and CI enforces that.
   uses the default `azapi` provider for it. The deploying principal needs
   `Microsoft.Network/virtualNetworks/join/action` on the target network, which may sit in a different
   subscription.
-- **`link_name` here, `name` in the submodule.** The two modules spell the same field differently. It is a
-  known inconsistency; renaming either is a breaking change, so it is batched rather than fixed in place.
 - **Requirements.** `Private DNS Zone Contributor` (or equivalent) on each zone, and `Network
   Contributor` (or equivalent) on each linked network's resource group.

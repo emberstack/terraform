@@ -27,6 +27,11 @@ locals {
   # subscription is not in this listing and must be passed as a resource ID.
   provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
 
+  # The input stays a plain resource group name (AVM's shape); the subscription
+  # comes from the configured provider, so an aliased or multi-subscription
+  # caller still lands in the right place.
+  resource_group_resource_id = "${local.provider_subscription_resource_id}/resourceGroups/${var.resource_group_name}"
+
   # A private endpoint must be created in the same subscription as the virtual
   # network it attaches to, while the private-link resource it targets may sit in
   # a different one (private-endpoint-overview, properties 4 and 5). So when an
@@ -45,13 +50,14 @@ locals {
     null
   )
 
-  # ARM spells these lower-camel, unlike the PascalCase used for the resource
-  # identity `type` right above. Only `UserAssignedIdentity` passes validation
-  # today, so only that spelling is reachable.
+  # ARM spells this lower-camel, unlike the PascalCase used for the resource
+  # identity `type` right above. `UserAssignedIdentity` is the only value the
+  # variable's own validation accepts, so it is the only spelling to map; a
+  # `systemAssignedIdentity` branch here would be unreachable code. If the
+  # resource provider ever accepts the other spelling, widen the validation in
+  # variables.tf and this local together.
   customer_managed_key_identity_type = (
-    var.customer_managed_key_encryption == null ? null :
-    lower(var.customer_managed_key_encryption.identity_type) == "systemassignedidentity"
-    ? "systemAssignedIdentity" : "userAssignedIdentity"
+    var.customer_managed_key_encryption == null ? null : "userAssignedIdentity"
   )
 
   role_definition_name_to_resource_id = length(local.all_role_assignments) > 0 ? {
@@ -88,7 +94,7 @@ locals {
 resource "azapi_resource" "this" {
   location  = var.location
   name      = var.name
-  parent_id = var.parent_id
+  parent_id = local.resource_group_resource_id
   type      = "Microsoft.Cache/redisEnterprise@2025-07-01"
   body = {
     properties = {
@@ -261,7 +267,7 @@ resource "azapi_resource" "private_endpoint" {
 
   location  = coalesce(each.value.location, var.location)
   name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
+  parent_id = each.value.resource_group_name == null ? local.resource_group_resource_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
   type      = "Microsoft.Network/privateEndpoints@2025-07-01"
   body = {
     properties = {

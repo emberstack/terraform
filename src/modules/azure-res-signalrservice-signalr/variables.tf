@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Required AVM-style interfaces
+# Required
 # -----------------------------------------------------------------------------
 
 variable "name" {
@@ -19,14 +19,14 @@ variable "location" {
   nullable    = false
 }
 
-variable "parent_id" {
+variable "resource_group_name" {
   type        = string
-  description = "Resource ID of the parent resource group. Mirrors AVM `parent_id` (the RG must already exist)."
+  description = "Name of the existing resource group where the service will be created. Mirrors AVM `resource_group_name`."
   nullable    = false
 
   validation {
-    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
-    error_message = "parent_id must be a resource group ARM resource ID, e.g. /subscriptions/<sub>/resourceGroups/<rg>."
+    condition     = length(var.resource_group_name) > 0 && !startswith(var.resource_group_name, "/")
+    error_message = "resource_group_name must be a name, not a resource ID."
   }
 }
 
@@ -37,6 +37,10 @@ variable "sku_name" {
   EOT
   nullable    = false
 }
+
+# -----------------------------------------------------------------------------
+# Optional — service
+# -----------------------------------------------------------------------------
 
 variable "sku_capacity" {
   type        = number
@@ -50,34 +54,110 @@ variable "sku_capacity" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# Standard AVM-style optional interfaces
-# -----------------------------------------------------------------------------
-
-variable "tags" {
-  type        = map(string)
-  default     = null
-  description = "Tags applied to the SignalR Service."
-}
-
-variable "lock" {
-  type = object({
-    kind = string
-    name = optional(string, null)
-  })
-  default     = null
+variable "service_mode" {
+  type        = string
+  default     = "Default"
   description = <<-EOT
-    Resource lock configuration.
+    Service mode. One of: `Default`, `Serverless`, `Classic`.
 
-    - `kind`: `CanNotDelete` or `ReadOnly`.
-    - `name`: optional. Defaults to `lock-<signalr-name>`.
+    - `Default`: bidirectional streaming with persistent backend connections.
+    - `Serverless`: client connections only — backend uses Upstream Endpoints
+      (Azure Functions / Webhooks) to receive events.
+    - `Classic`: legacy mode — avoid for new deployments.
   EOT
+  nullable    = false
 
   validation {
-    condition     = var.lock == null || contains(["CanNotDelete", "ReadOnly"], try(var.lock.kind, ""))
-    error_message = "lock.kind must be one of: CanNotDelete, ReadOnly."
+    condition     = contains(["Default", "Serverless", "Classic"], var.service_mode)
+    error_message = "service_mode must be one of: Default, Serverless, Classic."
   }
 }
+
+variable "serverless_connection_timeout_in_seconds" {
+  type        = number
+  default     = 30
+  description = "Serverless mode connection timeout (seconds). Range: 1–120. Only meaningful when `service_mode = \"Serverless\"`."
+  nullable    = false
+
+  validation {
+    condition     = var.serverless_connection_timeout_in_seconds >= 1 && var.serverless_connection_timeout_in_seconds <= 120
+    error_message = "serverless_connection_timeout_in_seconds must be between 1 and 120."
+  }
+}
+
+variable "cors_allowed_origins" {
+  type        = list(string)
+  default     = null
+  description = "List of CORS allowed origins. `null` (default) leaves the resource defaults; pass `[\"*\"]` to allow all."
+}
+
+variable "upstream_endpoints" {
+  type = list(object({
+    url_template              = string
+    category_pattern          = optional(list(string), ["*"])
+    event_pattern             = optional(list(string), ["*"])
+    hub_pattern               = optional(list(string), ["*"])
+    managed_identity_audience = optional(string, null)
+  }))
+  default     = []
+  description = <<-EOT
+    Upstream endpoints for `Serverless` service mode. Each entry routes events
+    matching the given category/event/hub patterns to the URL template.
+
+    - `managed_identity_audience`: when set, the service authenticates to the
+      upstream with a managed identity and this value becomes the token's
+      audience (`aud` claim) — the target's Application ID URI or resource URI,
+      shown in the portal as "Audience in the issued token". It is *not* a
+      managed identity resource ID. Which identity is used follows the
+      service's own `managed_identities` configuration.
+
+    Breaking change: this field was previously named `user_assigned_identity_id`,
+    which described neither its value nor its effect.
+  EOT
+  nullable    = false
+}
+
+# -----------------------------------------------------------------------------
+# Optional — authentication
+# -----------------------------------------------------------------------------
+
+variable "local_auth_enabled" {
+  type        = bool
+  default     = false
+  description = "Whether AccessKey-based authentication is enabled. Default: false (Entra ID only). Set to true only when a caller cannot yet use Entra-ID-based passwordless auth."
+  nullable    = false
+}
+
+variable "aad_auth_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether Entra ID (AAD) authentication is enabled. Default: true."
+  nullable    = false
+}
+
+variable "tls_client_cert_enabled" {
+  type        = bool
+  default     = false
+  description = "Whether TLS client certificate authentication is enabled. Default: false."
+  nullable    = false
+}
+
+variable "include_access_keys" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Whether to read the service's access keys and expose them as outputs.
+
+    Off by default: reading them costs an extra `listKeys` call on every plan and needs a wider
+    role than deploying does. With `local_auth_enabled = false` the keys are inert, so most
+    callers never want them.
+  EOT
+  nullable    = false
+}
+
+# -----------------------------------------------------------------------------
+# Optional — identity
+# -----------------------------------------------------------------------------
 
 variable "managed_identities" {
   type = object({
@@ -94,31 +174,50 @@ variable "managed_identities" {
   nullable    = false
 }
 
-variable "role_assignments" {
-  type = map(object({
-    name                                   = optional(string, null)
-    role_definition_id_or_name             = string
-    principal_id                           = string
-    description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
-    condition                              = optional(string, null)
-    condition_version                      = optional(string, null)
-    delegated_managed_identity_resource_id = optional(string, null)
-    principal_type                         = optional(string, null)
-  }))
-  default     = {}
+# -----------------------------------------------------------------------------
+# Optional — networking
+# -----------------------------------------------------------------------------
+
+variable "public_network_access_enabled" {
+  type        = bool
+  default     = true
   description = <<-EOT
-    Role assignments scoped to the SignalR Service, keyed by stable name.
-
-    `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
-    a full role definition resource ID. Auto-routed by the leading `/`.
-
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
+    Whether the service is reachable from the public internet. Default: true.
+    Combine with `network_acl` to actually restrict request types when true.
   EOT
   nullable    = false
+}
+
+variable "network_acl" {
+  type = object({
+    default_action = optional(string, "Deny")
+    public_network = optional(object({
+      allowed_request_types = optional(list(string), null)
+      denied_request_types  = optional(list(string), null)
+    }))
+    private_endpoints = optional(map(object({
+      allowed_request_types = optional(list(string), null)
+      denied_request_types  = optional(list(string), null)
+    })), {})
+  })
+  default     = null
+  description = <<-EOT
+    Network ACL configuration. Written by `azapi_update_resource.network_acl` in
+    this module, after the private endpoints exist — exactly one ACL per SignalR
+    service.
+
+    - `default_action`: `Allow` or `Deny` (default: `Deny`).
+    - `public_network`: optional public-network-side rules.
+    - `private_endpoints`: per-PE rules, keyed by the same map keys used in
+      `var.private_endpoints` (the PE referenced must exist in this module).
+
+    Request types: `ClientConnection`, `ServerConnection`, `RESTAPI`, `Trace`.
+  EOT
+
+  validation {
+    condition     = var.network_acl == null || contains(["Allow", "Deny"], try(var.network_acl.default_action, "Deny"))
+    error_message = "network_acl.default_action must be 'Allow' or 'Deny'."
+  }
 }
 
 variable "private_endpoints" {
@@ -202,81 +301,9 @@ variable "private_endpoints_manage_dns_zone_group" {
   nullable    = false
 }
 
-variable "diagnostic_settings" {
-  type = map(object({
-    name                                     = optional(string, null)
-    log_categories                           = optional(set(string), [])
-    log_groups                               = optional(set(string), ["allLogs"])
-    metric_categories                        = optional(set(string), ["AllMetrics"])
-    log_analytics_destination_type           = optional(string, "Dedicated")
-    workspace_resource_id                    = optional(string, null)
-    storage_account_resource_id              = optional(string, null)
-    event_hub_authorization_rule_resource_id = optional(string, null)
-    event_hub_name                           = optional(string, null)
-    marketplace_partner_resource_id          = optional(string, null)
-  }))
-  default     = {}
-  description = <<-EOT
-    Diagnostic settings on the SignalR Service, keyed by stable name.
-
-    Exactly one destination must be set per entry.
-  EOT
-  nullable    = false
-}
-
 # -----------------------------------------------------------------------------
-# SignalR-specific inputs
+# Optional — diagnostics
 # -----------------------------------------------------------------------------
-
-variable "service_mode" {
-  type        = string
-  default     = "Default"
-  description = <<-EOT
-    Service mode. One of: `Default`, `Serverless`, `Classic`.
-
-    - `Default`: bidirectional streaming with persistent backend connections.
-    - `Serverless`: client connections only — backend uses Upstream Endpoints
-      (Azure Functions / Webhooks) to receive events.
-    - `Classic`: legacy mode — avoid for new deployments.
-  EOT
-  nullable    = false
-
-  validation {
-    condition     = contains(["Default", "Serverless", "Classic"], var.service_mode)
-    error_message = "service_mode must be one of: Default, Serverless, Classic."
-  }
-}
-
-variable "public_network_access_enabled" {
-  type        = bool
-  default     = true
-  description = <<-EOT
-    Whether the service is reachable from the public internet. Default: true.
-    Combine with `network_acl` to actually restrict request types when true.
-  EOT
-  nullable    = false
-}
-
-variable "local_auth_enabled" {
-  type        = bool
-  default     = false
-  description = "Whether AccessKey-based authentication is enabled. Default: false (Entra ID only). Set to true only when a caller cannot yet use Entra-ID-based passwordless auth."
-  nullable    = false
-}
-
-variable "aad_auth_enabled" {
-  type        = bool
-  default     = true
-  description = "Whether Entra ID (AAD) authentication is enabled. Default: true."
-  nullable    = false
-}
-
-variable "tls_client_cert_enabled" {
-  type        = bool
-  default     = false
-  description = "Whether TLS client certificate authentication is enabled. Default: false."
-  nullable    = false
-}
 
 variable "connectivity_logs_enabled" {
   type        = bool
@@ -314,91 +341,96 @@ variable "live_trace" {
   EOT
 }
 
-variable "serverless_connection_timeout_in_seconds" {
-  type        = number
-  default     = 30
-  description = "Serverless mode connection timeout (seconds). Range: 1–120. Only meaningful when `service_mode = \"Serverless\"`."
-  nullable    = false
-
-  validation {
-    condition     = var.serverless_connection_timeout_in_seconds >= 1 && var.serverless_connection_timeout_in_seconds <= 120
-    error_message = "serverless_connection_timeout_in_seconds must be between 1 and 120."
-  }
-}
-
-variable "cors_allowed_origins" {
-  type        = list(string)
-  default     = null
-  description = "List of CORS allowed origins. `null` (default) leaves the resource defaults; pass `[\"*\"]` to allow all."
-}
-
-variable "upstream_endpoints" {
-  type = list(object({
-    url_template              = string
-    category_pattern          = optional(list(string), ["*"])
-    event_pattern             = optional(list(string), ["*"])
-    hub_pattern               = optional(list(string), ["*"])
-    managed_identity_audience = optional(string, null)
+variable "diagnostic_settings" {
+  type = map(object({
+    name                                     = optional(string, null)
+    log_categories                           = optional(set(string), [])
+    log_groups                               = optional(set(string), ["allLogs"])
+    metric_categories                        = optional(set(string), ["AllMetrics"])
+    log_analytics_destination_type           = optional(string, "Dedicated")
+    workspace_resource_id                    = optional(string, null)
+    storage_account_resource_id              = optional(string, null)
+    event_hub_authorization_rule_resource_id = optional(string, null)
+    event_hub_name                           = optional(string, null)
+    marketplace_partner_resource_id          = optional(string, null)
   }))
-  default     = []
+  default     = {}
   description = <<-EOT
-    Upstream endpoints for `Serverless` service mode. Each entry routes events
-    matching the given category/event/hub patterns to the URL template.
+    Diagnostic settings on the SignalR Service, keyed by stable name.
 
-    - `managed_identity_audience`: when set, the service authenticates to the
-      upstream with a managed identity and this value becomes the token's
-      audience (`aud` claim) — the target's Application ID URI or resource URI,
-      shown in the portal as "Audience in the issued token". It is *not* a
-      managed identity resource ID. Which identity is used follows the
-      service's own `managed_identities` configuration.
-
-    Breaking change: this field was previously named `user_assigned_identity_id`,
-    which described neither its value nor its effect.
+    Exactly one destination must be set per entry.
   EOT
   nullable    = false
 }
 
-variable "network_acl" {
+# -----------------------------------------------------------------------------
+# Optional — access
+# -----------------------------------------------------------------------------
+
+variable "role_assignments" {
+  type = map(object({
+    name                                   = optional(string, null)
+    role_definition_id_or_name             = string
+    principal_id                           = string
+    description                            = optional(string, null)
+    skip_service_principal_aad_check       = optional(bool, false)
+    condition                              = optional(string, null)
+    condition_version                      = optional(string, null)
+    delegated_managed_identity_resource_id = optional(string, null)
+    principal_type                         = optional(string, null)
+  }))
+  default     = {}
+  description = <<-EOT
+    Role assignments scoped to the SignalR Service, keyed by stable name.
+
+    `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
+    a full role definition resource ID. Auto-routed by the leading `/`.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
+  EOT
+  nullable    = false
+
+  validation {
+    condition = alltrue([
+      for assignment in var.role_assignments :
+      assignment.name == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", assignment.name))
+    ])
+    error_message = "role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — protection
+# -----------------------------------------------------------------------------
+
+variable "lock" {
   type = object({
-    default_action = optional(string, "Deny")
-    public_network = optional(object({
-      allowed_request_types = optional(list(string), null)
-      denied_request_types  = optional(list(string), null)
-    }))
-    private_endpoints = optional(map(object({
-      allowed_request_types = optional(list(string), null)
-      denied_request_types  = optional(list(string), null)
-    })), {})
+    kind = string
+    name = optional(string, null)
   })
   default     = null
   description = <<-EOT
-    Network ACL configuration. Written by `azapi_update_resource.network_acl` in
-    this module, after the private endpoints exist — exactly one ACL per SignalR
-    service.
+    Resource lock configuration.
 
-    - `default_action`: `Allow` or `Deny` (default: `Deny`).
-    - `public_network`: optional public-network-side rules.
-    - `private_endpoints`: per-PE rules, keyed by the same map keys used in
-      `var.private_endpoints` (the PE referenced must exist in this module).
-
-    Request types: `ClientConnection`, `ServerConnection`, `RESTAPI`, `Trace`.
+    - `kind`: `CanNotDelete` or `ReadOnly`.
+    - `name`: optional. Defaults to `lock-<signalr-name>`.
   EOT
 
   validation {
-    condition     = var.network_acl == null || contains(["Allow", "Deny"], try(var.network_acl.default_action, "Deny"))
-    error_message = "network_acl.default_action must be 'Allow' or 'Deny'."
+    condition     = var.lock == null || contains(["CanNotDelete", "ReadOnly"], try(var.lock.kind, ""))
+    error_message = "lock.kind must be one of: CanNotDelete, ReadOnly."
   }
 }
 
-variable "include_access_keys" {
-  type        = bool
-  default     = false
-  description = <<-EOT
-    Whether to read the service's access keys and expose them as outputs.
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
 
-    Off by default: reading them costs an extra `listKeys` call on every plan and needs a wider
-    role than deploying does. With `local_auth_enabled = false` the keys are inert, so most
-    callers never want them.
-  EOT
-  nullable    = false
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags applied to the SignalR Service."
 }

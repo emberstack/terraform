@@ -12,7 +12,7 @@ resource "azapi_resource" "this" {
   for_each = var.private_dns_zone_vnet_links
 
   location  = "global"
-  name      = each.value.link_name
+  name      = each.value.name
   parent_id = each.value.private_dns_zone_resource_id
   type      = "Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01"
   body = {

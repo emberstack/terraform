@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "virtual_network_resource_id" {
   type        = string
   description = "ARM resource ID of the existing virtual network whose DNS servers will be set."

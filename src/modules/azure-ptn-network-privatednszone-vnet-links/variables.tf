@@ -1,13 +1,11 @@
-variable "tags" {
-  type        = map(string)
-  default     = {}
-  description = "Tags to merge into every link. Per-link `tags` win over these on key collisions."
-}
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
 
 variable "private_dns_zone_vnet_links" {
   type = map(object({
     private_dns_zone_resource_id = string
-    link_name                    = string
+    name                         = string
     virtual_network_resource_id  = string
     registration_enabled         = optional(bool, false)
     # Defaults to null, which leaves `resolutionPolicy` to Azure — it sets the
@@ -27,7 +25,7 @@ variable "private_dns_zone_vnet_links" {
 
     Fields:
     - `private_dns_zone_resource_id` (required) — ARM resource ID of the private DNS zone. The zone name and RG are parsed from this.
-    - `link_name` (required) — the link's name in Azure; typically the vnet's short name.
+    - `name` (required) — the link's name in Azure; typically the vnet's short name.
     - `virtual_network_resource_id` (required) — ARM resource ID of the virtual network to link.
     - `registration_enabled` (optional, default `false`) — when `true`, VMs in the linked vnet auto-register their hostnames in the zone. Only valid for non-privatelink zones.
     - `resolution_policy` (optional, no module default) — `"Default"` or `"NxDomainRedirect"` (the latter is a privatelink-zone-only feature). Omitting it sends `null`, leaving Azure to apply its own default rather than the module forcing one.
@@ -43,4 +41,14 @@ variable "private_dns_zone_vnet_links" {
     condition     = alltrue([for k, v in var.private_dns_zone_vnet_links : v.resolution_policy == null || contains(["Default", "NxDomainRedirect"], v.resolution_policy)])
     error_message = "Each entry's `resolution_policy` must be null, `Default`, or `NxDomainRedirect`."
   }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
+
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags to merge into every link. Per-link `tags` win over these on key collisions."
 }

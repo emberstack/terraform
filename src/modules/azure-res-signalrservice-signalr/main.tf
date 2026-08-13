@@ -27,6 +27,11 @@ locals {
   # subscription is not in this listing and must be passed as a resource ID.
   provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
 
+  # The input stays a plain resource group name (AVM's shape); the subscription
+  # comes from the configured provider, so an aliased or multi-subscription
+  # caller still lands in the right place.
+  resource_group_resource_id = "${local.provider_subscription_resource_id}/resourceGroups/${var.resource_group_name}"
+
   # A private endpoint must be created in the same subscription as the virtual
   # network it attaches to, while the private-link resource it targets may sit in
   # a different one (private-endpoint-overview, properties 4 and 5). So when an
@@ -102,6 +107,25 @@ locals {
     for connection in try(data.azapi_resource.private_endpoint_connections[0].output.connections, []) :
     lower(connection.private_endpoint_id) => connection.name
   }
+
+  # One entry per ACL rule, with `connection_name = null` standing for "not
+  # resolvable yet or at all". Indexing the connection-name map directly inside
+  # the body below aborts with Terraform's bare "the given key does not identify
+  # an element", which names neither the endpoint nor the cause — and whether the
+  # preconditions on `azapi_update_resource.network_acl` get to explain it first
+  # depends on what Terraform already knows when it evaluates the body. Resolving
+  # to null makes the diagnostic deterministic instead. Null never reaches ARM:
+  # a failed precondition fails the plan.
+  network_acl_private_endpoint_rules = var.network_acl == null ? {} : {
+    for k, v in var.network_acl.private_endpoints : k => {
+      allow = [for t in local.request_type_order : t if contains(coalesce(v.allowed_request_types, []), t)]
+      deny  = [for t in local.request_type_order : t if contains(coalesce(v.denied_request_types, []), t)]
+      connection_name = try(
+        local.private_endpoint_connection_names[lower(azapi_resource.private_endpoint[k].id)],
+        null
+      )
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -111,7 +135,7 @@ locals {
 resource "azapi_resource" "this" {
   location  = var.location
   name      = var.name
-  parent_id = var.parent_id
+  parent_id = local.resource_group_resource_id
   type      = "Microsoft.SignalRService/signalR@2024-03-01"
   body = {
     properties = {
@@ -216,20 +240,31 @@ resource "azapi_update_resource" "network_acl" {
   type        = "Microsoft.SignalRService/signalR@2024-03-01"
   body = {
     properties = {
-      networkACLs = {
-        defaultAction = var.network_acl.default_action
-        privateEndpoints = [
-          for k, v in var.network_acl.private_endpoints : {
-            allow = [for t in local.request_type_order : t if contains(coalesce(v.allowed_request_types, []), t)]
-            deny  = [for t in local.request_type_order : t if contains(coalesce(v.denied_request_types, []), t)]
-            name  = local.private_endpoint_connection_names[lower(azapi_resource.private_endpoint[k].id)]
+      # `publicNetwork` is omitted rather than sent as null when unset. ARM always
+      # materialises the property — a service that has never been given one reports
+      # every request type allowed — so a null would diff on every plan, and
+      # `azapi_update_resource` has no `ignore_null_property` to suppress it.
+      # Omitting leaves whatever ARM holds, which for an unset service is
+      # permissive: pair `default_action = "Deny"` with an explicit
+      # `public_network` to actually close public access.
+      networkACLs = merge(
+        {
+          defaultAction = var.network_acl.default_action
+          privateEndpoints = [
+            for k, rule in local.network_acl_private_endpoint_rules : {
+              allow = rule.allow
+              deny  = rule.deny
+              name  = rule.connection_name
+            }
+          ]
+        },
+        var.network_acl.public_network == null ? {} : {
+          publicNetwork = {
+            allow = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.allowed_request_types, []), t)]
+            deny  = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.denied_request_types, []), t)]
           }
-        ]
-        publicNetwork = var.network_acl.public_network == null ? null : {
-          allow = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.allowed_request_types, []), t)]
-          deny  = [for t in local.request_type_order : t if contains(coalesce(var.network_acl.public_network.denied_request_types, []), t)]
         }
-      }
+      )
     }
   }
   lifecycle {
@@ -238,6 +273,25 @@ resource "azapi_update_resource" "network_acl" {
         for k in keys(var.network_acl.private_endpoints) : contains(keys(var.private_endpoints), k)
       ])
       error_message = "Every key in network_acl.private_endpoints must also exist in private_endpoints."
+    }
+    precondition {
+      # Skips keys the precondition above already rejects, so a typo'd key
+      # reports the one error that explains it rather than two.
+      condition = alltrue([
+        for k, rule in local.network_acl_private_endpoint_rules :
+        rule.connection_name != null if contains(keys(var.private_endpoints), k)
+      ])
+      error_message = <<-EOT
+        An ACL rule in network_acl.private_endpoints names a private endpoint whose
+        connection the SignalR service does not report yet.
+
+        On the first apply of a brand-new service this is expected: the connection
+        does not exist until the endpoint has been created, so run apply once more.
+        Every later apply is clean.
+
+        Otherwise the endpoint's connection is missing or in a non-approved state —
+        check properties.privateEndpointConnections on the service.
+      EOT
     }
   }
 }
@@ -251,11 +305,21 @@ resource "azapi_update_resource" "network_acl" {
 resource "azapi_resource_action" "access_keys" {
   count = var.include_access_keys ? 1 : 0
 
-  action                 = "listKeys"
-  method                 = "POST"
-  resource_id            = azapi_resource.this.id
-  type                   = "Microsoft.SignalRService/signalR@2024-03-01"
-  response_export_values = ["*"]
+  action      = "listKeys"
+  method      = "POST"
+  resource_id = azapi_resource.this.id
+  type        = "Microsoft.SignalRService/signalR@2024-03-01"
+
+  # Named rather than ["*"] so state holds only the four values that are actually
+  # published, and `outputs.tf` reads module-cased names instead of raw ARM ones.
+  # listKeys returns nothing else today, but ["*"] would carry anything ARM adds
+  # into state without review — on the one output in this module that is secret.
+  response_export_values = {
+    primary_connection_string   = "primaryConnectionString"
+    primary_key                 = "primaryKey"
+    secondary_connection_string = "secondaryConnectionString"
+    secondary_key               = "secondaryKey"
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -359,7 +423,7 @@ resource "azapi_resource" "private_endpoint" {
 
   location  = coalesce(each.value.location, var.location)
   name      = coalesce(each.value.name, "${var.name}-pe-${each.key}")
-  parent_id = each.value.resource_group_name == null ? var.parent_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
+  parent_id = each.value.resource_group_name == null ? local.resource_group_resource_id : "${local.private_endpoint_subscription_resource_ids[each.key]}/resourceGroups/${each.value.resource_group_name}"
   type      = "Microsoft.Network/privateEndpoints@2025-07-01"
   body = {
     properties = {

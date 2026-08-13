@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "name" {
   type        = string
   description = "Public DNS zone name (fully-qualified, e.g., `dev.acme.example`)."
@@ -20,11 +24,9 @@ variable "resource_group_name" {
   }
 }
 
-variable "tags" {
-  type        = map(string)
-  default     = {}
-  description = "Tags to apply to the DNS zone."
-}
+# -----------------------------------------------------------------------------
+# Optional — zone configuration
+# -----------------------------------------------------------------------------
 
 variable "soa_record" {
   type = object({
@@ -45,6 +47,38 @@ variable "soa_record" {
     AVM `avm-res-network-dnszone` does not expose this — emberstack does.
   EOT
 }
+
+variable "parent_zone" {
+  type = object({
+    zone_id         = string
+    delegation_name = string
+    delegation_ttl  = optional(number, 3600)
+    delegation_tags = optional(map(string), {})
+  })
+  default     = null
+  description = <<-EOT
+    Optional parent-zone NS delegation. When set, creates an NS record in the parent zone whose entries are this zone's name servers — wiring up the subdomain delegation in one apply.
+
+    `zone_id` is the parent zone's ARM resource ID; the parent's RG name and zone name are parsed from it.
+
+    `delegation_name` is the subdomain label to delegate (e.g., `glb` to delegate `glb.acme.example` from `acme.example`).
+
+    `delegation_tags` are applied to the NS delegation record. Defaults to `{}` (empty). The zone's `var.tags` are NOT inherited — set `delegation_tags` explicitly if you want tags on the delegation record.
+
+    The deploying principal must have write access to the parent zone's RG (typically `DNS Zone Contributor`). If the parent zone is in a different subscription, configure provider aliases at the leaf level.
+
+    AVM `avm-res-network-dnszone` does not expose this — emberstack does.
+  EOT
+
+  validation {
+    condition     = var.parent_zone == null || can(regex("(?i)^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.network/dnszones/[^/]+$", var.parent_zone.zone_id))
+    error_message = "parent_zone.zone_id must be an ARM resource ID of an Azure public DNS zone."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — access
+# -----------------------------------------------------------------------------
 
 variable "role_assignments" {
   type = map(object({
@@ -80,6 +114,7 @@ variable "role_assignments" {
 
     Mirrors AVM's standard `role_assignments` interface block.
   EOT
+  nullable    = false
 
   validation {
     condition = alltrue([
@@ -90,30 +125,12 @@ variable "role_assignments" {
   }
 }
 
-variable "parent_zone" {
-  type = object({
-    zone_id         = string
-    delegation_name = string
-    delegation_ttl  = optional(number, 3600)
-    delegation_tags = optional(map(string), {})
-  })
-  default     = null
-  description = <<-EOT
-    Optional parent-zone NS delegation. When set, creates an NS record in the parent zone whose entries are this zone's name servers — wiring up the subdomain delegation in one apply.
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
 
-    `zone_id` is the parent zone's ARM resource ID; the parent's RG name and zone name are parsed from it.
-
-    `delegation_name` is the subdomain label to delegate (e.g., `glb` to delegate `glb.acme.example` from `acme.example`).
-
-    `delegation_tags` are applied to the NS delegation record. Defaults to `{}` (empty). The zone's `var.tags` are NOT inherited — set `delegation_tags` explicitly if you want tags on the delegation record.
-
-    The deploying principal must have write access to the parent zone's RG (typically `DNS Zone Contributor`). If the parent zone is in a different subscription, configure provider aliases at the leaf level.
-
-    AVM `avm-res-network-dnszone` does not expose this — emberstack does.
-  EOT
-
-  validation {
-    condition     = var.parent_zone == null || can(regex("(?i)^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.network/dnszones/[^/]+$", var.parent_zone.zone_id))
-    error_message = "parent_zone.zone_id must be an ARM resource ID of an Azure public DNS zone."
-  }
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags to apply to the DNS zone."
 }

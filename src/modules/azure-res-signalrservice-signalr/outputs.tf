@@ -41,10 +41,10 @@ output "access_keys" {
   EOT
   sensitive   = true
   value = var.include_access_keys ? {
-    primary_connection_string   = try(azapi_resource_action.access_keys[0].output.primaryConnectionString, null)
-    primary_key                 = try(azapi_resource_action.access_keys[0].output.primaryKey, null)
-    secondary_connection_string = try(azapi_resource_action.access_keys[0].output.secondaryConnectionString, null)
-    secondary_key               = try(azapi_resource_action.access_keys[0].output.secondaryKey, null)
+    primary_connection_string   = try(azapi_resource_action.access_keys[0].output.primary_connection_string, null)
+    primary_key                 = try(azapi_resource_action.access_keys[0].output.primary_key, null)
+    secondary_connection_string = try(azapi_resource_action.access_keys[0].output.secondary_connection_string, null)
+    secondary_key               = try(azapi_resource_action.access_keys[0].output.secondary_key, null)
   } : null
 }
 
@@ -58,7 +58,7 @@ output "private_endpoints" {
   EOT
   value = {
     for k, v in azapi_resource.private_endpoint : k => {
-      id                = v.id
+      resource_id       = v.id
       name              = v.name
       network_interface = try(v.output.network_interfaces[0], null)
       private_ip_address = try(
@@ -74,8 +74,8 @@ output "diagnostic_settings" {
   description = "Map of diagnostic settings keyed by the input map key."
   value = {
     for k, v in azapi_resource.diagnostic_settings : k => {
-      id   = v.id
-      name = v.name
+      resource_id = v.id
+      name        = v.name
     }
   }
 }
@@ -84,14 +84,13 @@ output "role_assignments" {
   description = "Map of service-scoped role assignments keyed by the input map key."
   value = {
     for k, v in azapi_resource.role_assignments : k => {
-      id           = v.id
+      resource_id  = v.id
       principal_id = var.role_assignments[k].principal_id
     }
   }
 }
 
 output "resource" {
-  description = "The full SignalR Service resource. Sensitive — prefer the focused outputs."
-  sensitive   = true
+  description = "The full SignalR Service resource. Prefer the focused outputs; this one is an escape hatch. Not marked sensitive: the body carries no key material — the access keys come from the separate `access_keys` output, which is."
   value       = azapi_resource.this
 }

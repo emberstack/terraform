@@ -22,7 +22,7 @@ output "identity_role_assignments" {
   description = "Map of identity-scoped role assignments keyed by the input map key."
   value = {
     for k, v in azapi_resource.identity_role_assignments : k => {
-      id           = v.id
+      resource_id  = v.id
       principal_id = local.system_identity_principal_id
       scope        = v.parent_id
     }

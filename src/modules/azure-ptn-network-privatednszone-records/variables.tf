@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "private_dns_zone_resource_id" {
   type        = string
   description = "ARM resource ID of the existing private DNS zone (e.g., `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/privateDnsZones/<zone>`). The zone name and resource group name are parsed from this."
@@ -9,11 +13,9 @@ variable "private_dns_zone_resource_id" {
   }
 }
 
-variable "tags" {
-  type        = map(string)
-  default     = {}
-  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
-}
+# -----------------------------------------------------------------------------
+# Optional — records
+# -----------------------------------------------------------------------------
 
 variable "private_dns_zone_records" {
   type = map(object({
@@ -78,4 +80,14 @@ variable "private_dns_zone_records" {
     ])
     error_message = "Each record must populate the type-specific field (e.g., `type = \"A\"` requires `a_records`; `type = \"CNAME\"` requires `cname_record`)."
   }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
+
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
 }

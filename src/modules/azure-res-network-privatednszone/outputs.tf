@@ -17,7 +17,7 @@ output "role_assignments" {
   description = "Map of zone-scope role assignments keyed by the input map key."
   value = {
     for k, v in azapi_resource.role_assignments : k => {
-      id           = v.id
+      resource_id  = v.id
       principal_id = var.role_assignments[k].principal_id
     }
   }

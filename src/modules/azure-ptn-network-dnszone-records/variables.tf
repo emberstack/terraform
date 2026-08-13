@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "dns_zone_resource_id" {
   type        = string
   description = "ARM resource ID of the existing public DNS zone. Used directly as each record's `parent_id`."
@@ -9,11 +13,9 @@ variable "dns_zone_resource_id" {
   }
 }
 
-variable "tags" {
-  type        = map(string)
-  default     = {}
-  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
-}
+# -----------------------------------------------------------------------------
+# Optional — records
+# -----------------------------------------------------------------------------
 
 variable "dns_zone_records" {
   type = map(object({
@@ -86,4 +88,14 @@ variable "dns_zone_records" {
     ])
     error_message = "Each record must populate the type-specific field (e.g., `type = \"A\"` requires `a_records`; `type = \"CNAME\"` requires `cname_record`)."
   }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
+
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags to merge into every record. Per-record `tags` win over these on key collisions."
 }

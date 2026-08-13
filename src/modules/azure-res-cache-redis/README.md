@@ -10,7 +10,7 @@ Terraform module for **Azure Managed Redis** (`Microsoft.Cache/redisEnterprise`)
    - `geo_replication_group_name`
    - cluster-level `diagnostic_settings` (built-in, not a sidecar extension)
 
-The module does **not** create the parent resource group — pass an existing one via `parent_id`.
+The module does **not** create the resource group — pass the name of an existing one via `resource_group_name`.
 
 ## Usage
 
@@ -20,10 +20,10 @@ The module does **not** create the parent resource group — pass an existing on
 module "redis" {
   source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-cache-redis?ref=vX.Y.Z"
 
-  name      = "my-redis-cluster"
-  location  = "westeurope"
-  parent_id = var.resource_group_resource_id
-  sku_name  = "Balanced_B0"
+  name                = "my-redis-cluster"
+  location            = "westeurope"
+  resource_group_name = var.resource_group_name
+  sku_name            = "Balanced_B0"
 }
 ```
 
@@ -35,10 +35,10 @@ CMK requires a user-assigned identity — the resource provider only supports `u
 module "redis" {
   source = "..."
 
-  name      = "my-redis-cluster"
-  location  = "westeurope"
-  parent_id = var.resource_group_resource_id
-  sku_name  = "Balanced_B0"
+  name                = "my-redis-cluster"
+  location            = "westeurope"
+  resource_group_name = var.resource_group_name
+  sku_name            = "Balanced_B0"
 
   managed_identities = {
     user_assigned_resource_ids = [var.cmk_identity_resource_id]

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Required AVM-style interfaces
+# Required
 # -----------------------------------------------------------------------------
 
 variable "name" {
@@ -19,14 +19,14 @@ variable "location" {
   nullable    = false
 }
 
-variable "parent_id" {
+variable "resource_group_name" {
   type        = string
-  description = "Resource ID of the parent resource group. Mirrors AVM `parent_id` (the cluster RG must already exist)."
+  description = "Name of the existing resource group where the cluster will be created. Mirrors AVM `resource_group_name`."
   nullable    = false
 
   validation {
-    condition     = can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.parent_id))
-    error_message = "parent_id must be a resource group ARM resource ID, e.g. /subscriptions/<sub>/resourceGroups/<rg>."
+    condition     = length(var.resource_group_name) > 0 && !startswith(var.resource_group_name, "/")
+    error_message = "resource_group_name must be a name, not a resource ID."
   }
 }
 
@@ -43,33 +43,183 @@ variable "sku_name" {
 }
 
 # -----------------------------------------------------------------------------
-# Standard AVM-style optional interfaces
+# Optional — cluster
 # -----------------------------------------------------------------------------
 
-variable "tags" {
-  type        = map(string)
-  default     = null
-  description = "Tags applied to the cluster."
+variable "high_availability" {
+  type        = string
+  default     = "Enabled"
+  description = <<-EOT
+    High-availability mode: `Enabled` (default — primary + replica shards across
+    two nodes, zone-redundant in regions with AZs) or `Disabled` (single shard;
+    halves cost; only suitable for dev/test).
+  EOT
+  nullable    = false
+
+  validation {
+    condition     = contains(["Enabled", "Disabled"], var.high_availability)
+    error_message = "high_availability must be 'Enabled' or 'Disabled'."
+  }
 }
 
-variable "lock" {
-  type = object({
-    kind = string
-    name = optional(string, null)
-  })
+variable "public_network_access" {
+  type        = string
+  default     = "Disabled"
+  description = "Whether the cluster is reachable from the public internet. `Enabled` or `Disabled` (default)."
+  nullable    = false
+
+  validation {
+    condition     = contains(["Enabled", "Disabled"], var.public_network_access)
+    error_message = "public_network_access must be 'Enabled' or 'Disabled'."
+  }
+}
+
+variable "minimum_tls_version" {
+  type        = string
+  default     = "1.2"
+  description = <<-EOT
+    Minimum TLS version the cluster accepts. Sent on every write rather than left to the service
+    default, so an existing value can never be silently reset by an unrelated change.
+
+    AVM `avm-res-cache-redisenterprise` does not expose this — emberstack does.
+  EOT
+  nullable    = false
+
+  validation {
+    condition     = contains(["1.0", "1.1", "1.2"], var.minimum_tls_version)
+    error_message = "minimum_tls_version must be one of: 1.0, 1.1, 1.2."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — database
+# -----------------------------------------------------------------------------
+# These map onto the cluster's default database (every Redis Enterprise cluster
+# has exactly one database named `default`).
+
+variable "clustering_policy" {
+  type        = string
+  default     = "EnterpriseCluster"
+  description = <<-EOT
+    Clustering policy. Immutable after creation.
+
+    - `EnterpriseCluster`: single endpoint, automatic sharding (default).
+    - `OSSCluster`: Redis Cluster API protocol, best performance.
+    - `NoCluster`: non-clustered mode (max 25 GB).
+  EOT
+  nullable    = false
+
+  validation {
+    condition     = contains(["EnterpriseCluster", "OSSCluster", "NoCluster"], var.clustering_policy)
+    error_message = "clustering_policy must be one of: EnterpriseCluster, OSSCluster, NoCluster."
+  }
+}
+
+variable "eviction_policy" {
+  type        = string
+  default     = "AllKeysLRU"
+  description = <<-EOT
+    Eviction policy when memory limit is reached.
+
+    Possible values: `AllKeysLRU`, `AllKeysRandom`, `VolatileLRU`,
+    `VolatileRandom`, `VolatileTTL`, `NoEviction`.
+  EOT
+  nullable    = false
+
+  validation {
+    condition     = contains(["AllKeysLRU", "AllKeysRandom", "VolatileLRU", "VolatileRandom", "VolatileTTL", "NoEviction"], var.eviction_policy)
+    error_message = "eviction_policy must be one of: AllKeysLRU, AllKeysRandom, VolatileLRU, VolatileRandom, VolatileTTL, NoEviction."
+  }
+}
+
+variable "enable_non_ssl_port" {
+  type        = bool
+  default     = false
+  description = "Enable the non-SSL port (Plaintext client protocol). Default: false (Encrypted only)."
+  nullable    = false
+}
+
+variable "access_keys_authentication_enabled" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Whether legacy access-keys authentication is enabled on the database.
+
+    Default: false (Entra-only auth via access policy assignments). Set to true
+    when callers can't yet use Entra-ID-based passwordless auth.
+
+    **Not exposed by the upstream AVM module** — added here to cover the gap.
+  EOT
+  nullable    = false
+}
+
+variable "persistence_append_only_file_backup_frequency" {
+  type        = string
   default     = null
   description = <<-EOT
-    Resource lock configuration.
+    AOF persistence backup frequency. Common values: `1s`, `always`.
 
-    - `kind`: `CanNotDelete` or `ReadOnly`.
-    - `name`: optional. Defaults to `lock-<cluster-name>`.
+    Mutually exclusive with `persistence_redis_database_backup_frequency`.
+
+    **Not exposed by the upstream AVM module** — added here to cover the gap.
   EOT
 
   validation {
-    condition     = var.lock == null || contains(["CanNotDelete", "ReadOnly"], try(var.lock.kind, ""))
-    error_message = "lock.kind must be one of: CanNotDelete, ReadOnly."
+    condition = (
+      var.persistence_append_only_file_backup_frequency == null ||
+      var.persistence_redis_database_backup_frequency == null
+    )
+    error_message = "persistence_append_only_file_backup_frequency and persistence_redis_database_backup_frequency are mutually exclusive — set at most one."
   }
 }
+
+variable "persistence_redis_database_backup_frequency" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    RDB persistence backup frequency. Common values: `1h`, `6h`, `12h`.
+
+    Mutually exclusive with `persistence_append_only_file_backup_frequency`.
+
+    **Not exposed by the upstream AVM module** — added here to cover the gap.
+  EOT
+}
+
+variable "geo_replication_group_name" {
+  type        = string
+  default     = null
+  description = "Active geo-replication group name. Set to join an Active-Active geo-replication group."
+}
+
+variable "redis_modules" {
+  type = list(object({
+    name = string
+    args = optional(string, null)
+  }))
+  default     = []
+  description = <<-EOT
+    Redis modules to enable on the database.
+
+    - `RediSearch` — full-text search (requires `EnterpriseCluster`).
+    - `RedisJSON` — JSON data type support.
+    - `RedisBloom` — probabilistic data structures.
+    - `RedisTimeSeries` — time-series data structures.
+
+    Adding/removing modules is destructive (cluster recreation).
+  EOT
+  nullable    = false
+}
+
+variable "port" {
+  type        = number
+  default     = 10000
+  description = "TCP port the default database listens on. Sent explicitly for the same reason as `minimum_tls_version` — clients break if it moves."
+  nullable    = false
+}
+
+# -----------------------------------------------------------------------------
+# Optional — identity
+# -----------------------------------------------------------------------------
 
 variable "managed_identities" {
   type = object({
@@ -120,36 +270,9 @@ variable "customer_managed_key_encryption" {
   }
 }
 
-variable "role_assignments" {
-  type = map(object({
-    name                                   = optional(string, null)
-    role_definition_id_or_name             = string
-    principal_id                           = string
-    description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
-    condition                              = optional(string, null)
-    condition_version                      = optional(string, null)
-    delegated_managed_identity_resource_id = optional(string, null)
-    principal_type                         = optional(string, null)
-  }))
-  default     = {}
-  description = <<-EOT
-    Role assignments scoped to the cluster, keyed by stable name.
-
-    `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
-    a full role definition resource ID. Auto-routed by the leading `/`.
-
-    `name` is the assignment's ARM name (a GUID). Leave it unset — a random UUID is
-    generated — unless you are adopting an assignment that already exists, where the
-    existing GUID must be supplied to avoid a destroy-and-recreate.
-
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
-  EOT
-  nullable    = false
-}
+# -----------------------------------------------------------------------------
+# Optional — networking
+# -----------------------------------------------------------------------------
 
 variable "private_endpoints" {
   type = map(object({
@@ -233,6 +356,53 @@ variable "private_endpoints_manage_dns_zone_group" {
   nullable    = false
 }
 
+# -----------------------------------------------------------------------------
+# Optional — access
+# -----------------------------------------------------------------------------
+
+variable "role_assignments" {
+  type = map(object({
+    name                                   = optional(string, null)
+    role_definition_id_or_name             = string
+    principal_id                           = string
+    description                            = optional(string, null)
+    skip_service_principal_aad_check       = optional(bool, false)
+    condition                              = optional(string, null)
+    condition_version                      = optional(string, null)
+    delegated_managed_identity_resource_id = optional(string, null)
+    principal_type                         = optional(string, null)
+  }))
+  default     = {}
+  description = <<-EOT
+    Role assignments scoped to the cluster, keyed by stable name.
+
+    `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
+    a full role definition resource ID. Auto-routed by the leading `/`.
+
+    `name` is the assignment's ARM name (a GUID). Leave it unset — a random UUID is
+    generated — unless you are adopting an assignment that already exists, where the
+    existing GUID must be supplied to avoid a destroy-and-recreate.
+
+    `skip_service_principal_aad_check` is accepted for interface compatibility and has
+    no effect. ARM's equivalent is `principalType`, which this module already
+    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
+    lookup that fails on a principal created moments earlier.
+  EOT
+  nullable    = false
+
+  validation {
+    condition = alltrue([
+      for assignment in var.role_assignments :
+      assignment.name == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", assignment.name))
+    ])
+    error_message = "role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — diagnostics
+# -----------------------------------------------------------------------------
+
 variable "diagnostic_settings" {
   type = map(object({
     name                                     = optional(string, null)
@@ -258,168 +428,34 @@ variable "diagnostic_settings" {
 }
 
 # -----------------------------------------------------------------------------
-# Cluster-specific inputs — mirroring AVM where applicable
+# Optional — protection
 # -----------------------------------------------------------------------------
 
-variable "high_availability" {
-  type        = string
-  default     = "Enabled"
+variable "lock" {
+  type = object({
+    kind = string
+    name = optional(string, null)
+  })
+  default     = null
   description = <<-EOT
-    High-availability mode: `Enabled` (default — primary + replica shards across
-    two nodes, zone-redundant in regions with AZs) or `Disabled` (single shard;
-    halves cost; only suitable for dev/test).
+    Resource lock configuration.
+
+    - `kind`: `CanNotDelete` or `ReadOnly`.
+    - `name`: optional. Defaults to `lock-<cluster-name>`.
   EOT
-  nullable    = false
 
   validation {
-    condition     = contains(["Enabled", "Disabled"], var.high_availability)
-    error_message = "high_availability must be 'Enabled' or 'Disabled'."
-  }
-}
-
-variable "public_network_access" {
-  type        = string
-  default     = "Disabled"
-  description = "Whether the cluster is reachable from the public internet. `Enabled` or `Disabled` (default)."
-  nullable    = false
-
-  validation {
-    condition     = contains(["Enabled", "Disabled"], var.public_network_access)
-    error_message = "public_network_access must be 'Enabled' or 'Disabled'."
+    condition     = var.lock == null || contains(["CanNotDelete", "ReadOnly"], try(var.lock.kind, ""))
+    error_message = "lock.kind must be one of: CanNotDelete, ReadOnly."
   }
 }
 
 # -----------------------------------------------------------------------------
-# Database-specific inputs
+# Optional — metadata
 # -----------------------------------------------------------------------------
-# These map onto the cluster's default database (every Redis Enterprise cluster
-# has exactly one database named `default`).
 
-variable "clustering_policy" {
-  type        = string
-  default     = "EnterpriseCluster"
-  description = <<-EOT
-    Clustering policy. Immutable after creation.
-
-    - `EnterpriseCluster`: single endpoint, automatic sharding (default).
-    - `OSSCluster`: Redis Cluster API protocol, best performance.
-    - `NoCluster`: non-clustered mode (max 25 GB).
-  EOT
-  nullable    = false
-
-  validation {
-    condition     = contains(["EnterpriseCluster", "OSSCluster", "NoCluster"], var.clustering_policy)
-    error_message = "clustering_policy must be one of: EnterpriseCluster, OSSCluster, NoCluster."
-  }
-}
-
-variable "eviction_policy" {
-  type        = string
-  default     = "AllKeysLRU"
-  description = <<-EOT
-    Eviction policy when memory limit is reached.
-
-    Possible values: `AllKeysLRU`, `AllKeysRandom`, `VolatileLRU`,
-    `VolatileRandom`, `VolatileTTL`, `NoEviction`.
-  EOT
-  nullable    = false
-
-  validation {
-    condition     = contains(["AllKeysLRU", "AllKeysRandom", "VolatileLRU", "VolatileRandom", "VolatileTTL", "NoEviction"], var.eviction_policy)
-    error_message = "eviction_policy must be one of: AllKeysLRU, AllKeysRandom, VolatileLRU, VolatileRandom, VolatileTTL, NoEviction."
-  }
-}
-
-variable "enable_non_ssl_port" {
-  type        = bool
-  default     = false
-  description = "Enable the non-SSL port (Plaintext client protocol). Default: false (Encrypted only)."
-  nullable    = false
-}
-
-variable "access_keys_authentication_enabled" {
-  type        = bool
-  default     = false
-  description = <<-EOT
-    Whether legacy access-keys authentication is enabled on the database.
-
-    Default: false (Entra-only auth via access policy assignments). Set to true
-    when callers can't yet use Entra-ID-based passwordless auth.
-
-    **Not exposed by the upstream AVM module** — added here to cover the gap.
-  EOT
-  nullable    = false
-}
-
-variable "persistence_append_only_file_backup_frequency" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    AOF persistence backup frequency. Common values: `1s`, `always`.
-
-    Mutually exclusive with `persistence_redis_database_backup_frequency`.
-
-    **Not exposed by the upstream AVM module** — added here to cover the gap.
-  EOT
-}
-
-variable "persistence_redis_database_backup_frequency" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    RDB persistence backup frequency. Common values: `1h`, `6h`, `12h`.
-
-    Mutually exclusive with `persistence_append_only_file_backup_frequency`.
-
-    **Not exposed by the upstream AVM module** — added here to cover the gap.
-  EOT
-}
-
-variable "geo_replication_group_name" {
-  type        = string
-  default     = null
-  description = "Active geo-replication group name. Set to join an Active-Active geo-replication group."
-}
-
-variable "redis_modules" {
-  type = list(object({
-    name = string
-    args = optional(string, null)
-  }))
-  default     = []
-  description = <<-EOT
-    Redis modules to enable on the database.
-
-    - `RediSearch` — full-text search (requires `EnterpriseCluster`).
-    - `RedisJSON` — JSON data type support.
-    - `RedisBloom` — probabilistic data structures.
-    - `RedisTimeSeries` — time-series data structures.
-
-    Adding/removing modules is destructive (cluster recreation).
-  EOT
-  nullable    = false
-}
-
-variable "minimum_tls_version" {
-  type        = string
-  default     = "1.2"
-  description = <<-EOT
-    Minimum TLS version the cluster accepts. Sent on every write rather than left to the service
-    default, so an existing value can never be silently reset by an unrelated change.
-
-    AVM `avm-res-cache-redisenterprise` does not expose this — emberstack does.
-  EOT
-  nullable    = false
-
-  validation {
-    condition     = contains(["1.0", "1.1", "1.2"], var.minimum_tls_version)
-    error_message = "minimum_tls_version must be one of: 1.0, 1.1, 1.2."
-  }
-}
-
-variable "port" {
-  type        = number
-  default     = 10000
-  description = "TCP port the default database listens on. Sent explicitly for the same reason as `minimum_tls_version` — clients break if it moves."
-  nullable    = false
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags applied to the cluster."
 }

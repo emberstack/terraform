@@ -54,9 +54,6 @@ carries a description, and CI enforces that.
 - **`resolution_policy` defaults to null**, which leaves the property to Azure — it sets a value itself on
   privatelink zones. `Default` or `NxDomainRedirect` are the accepted values; the latter is a
   privatelink-zone-only feature. Leave it null for non-privatelink zones.
-- **`name` here, `link_name` in the collection pattern.** The two modules spell the same field
-  differently. It is a known inconsistency; renaming either is a breaking change, so it is batched rather
-  than fixed in place.
 - **Requirements.** `Private DNS Zone Contributor` (or equivalent) on the zone, and
   `Microsoft.Network/virtualNetworks/join/action` on the target network — which may live in a different
   subscription, since the link itself is created in the zone's subscription.

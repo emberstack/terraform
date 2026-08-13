@@ -19,8 +19,25 @@ variable "scope" {
     The scope must be at or above any scope where the role will be assigned.
     Use the highest applicable management group for roles meant to be reused
     across multiple subscriptions.
+
+    Segment names are matched case-insensitively, as ARM resource IDs are.
   EOT
   nullable    = false
+
+  validation {
+    # Same four matchers as azure-res-policy-assignment, folding case for the
+    # same reason: ARM segment names are case-insensitive. Resource group and
+    # resource are accepted even though they are not the documented anchors —
+    # ARM permits a role definition there, and rejecting it here would make the
+    # module stricter than the platform.
+    condition = (
+      can(regex("(?i)^/providers/Microsoft\\.Management/managementGroups/", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+$", var.scope)) ||
+      can(regex("(?i)^/subscriptions/[^/]+(/resourceGroups/[^/]+)?/providers/", var.scope))
+    )
+    error_message = "scope must be a management group, subscription, resource group, or resource ARM resource ID."
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -41,6 +58,11 @@ variable "role_definition_id" {
     generates one on create. Set this to keep a stable ID across recreates
     (e.g. when an assignment elsewhere references the role by ID).
   EOT
+
+  validation {
+    condition     = var.role_definition_id == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.role_definition_id))
+    error_message = "role_definition_id, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -84,4 +106,12 @@ variable "assignable_scopes" {
     role can be assigned anywhere within the anchor scope.
   EOT
   nullable    = false
+
+  validation {
+    # Shape only. "At or below `scope`" is deliberately not checked: a
+    # subscription below a management group does not share that group's ID
+    # prefix, so the containment rule is not decidable from the strings alone.
+    condition     = alltrue([for assignable_scope in var.assignable_scopes : startswith(assignable_scope, "/")])
+    error_message = "assignable_scopes entries must be ARM resource IDs, each starting with `/`."
+  }
 }

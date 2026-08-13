@@ -1,16 +1,6 @@
-variable "scope" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    Default anchor scope applied to every role definition that does not
-    override it. Required unless every entry in `role_definitions` sets its
-    own `scope`.
-
-    Typical values:
-    - Management group: `/providers/Microsoft.Management/managementGroups/<mg>`
-    - Subscription:     `/subscriptions/<sub>`
-  EOT
-}
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
 
 variable "role_definitions" {
   type = map(object({
@@ -48,4 +38,22 @@ variable "role_definitions" {
     condition     = alltrue([for v in values(var.role_definitions) : v.scope != null || var.scope != null])
     error_message = "Every role definition must have a scope. Provide either the module-level `scope` or a per-entry `scope`."
   }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — scope
+# -----------------------------------------------------------------------------
+
+variable "scope" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Default anchor scope applied to every role definition that does not
+    override it. Required unless every entry in `role_definitions` sets its
+    own `scope`.
+
+    Typical values:
+    - Management group: `/providers/Microsoft.Management/managementGroups/<mg>`
+    - Subscription:     `/subscriptions/<sub>`
+  EOT
 }

@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "name" {
   type        = string
   description = "Private DNS zone name (fully-qualified, e.g., `privatelink.vaultcore.azure.net`, `internal.acme.example`)."
@@ -20,11 +24,9 @@ variable "resource_group_name" {
   }
 }
 
-variable "tags" {
-  type        = map(string)
-  default     = {}
-  description = "Tags to apply to the private DNS zone."
-}
+# -----------------------------------------------------------------------------
+# Optional — zone configuration
+# -----------------------------------------------------------------------------
 
 variable "soa_record" {
   type = object({
@@ -43,6 +45,10 @@ variable "soa_record" {
     the SOA record is written with a full PUT — an omitted field resets the server-side value.
   EOT
 }
+
+# -----------------------------------------------------------------------------
+# Optional — access
+# -----------------------------------------------------------------------------
 
 variable "role_assignments" {
   type = map(object({
@@ -78,6 +84,7 @@ variable "role_assignments" {
 
     Mirrors AVM's standard `role_assignments` interface block.
   EOT
+  nullable    = false
 
   validation {
     condition = alltrue([
@@ -86,4 +93,14 @@ variable "role_assignments" {
     ])
     error_message = "role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
   }
+}
+
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
+
+variable "tags" {
+  type        = map(string)
+  default     = {}
+  description = "Tags to apply to the private DNS zone."
 }

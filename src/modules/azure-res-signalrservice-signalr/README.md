@@ -6,7 +6,7 @@ network ACL, private endpoints, diagnostic settings, management lock and role as
 ## Why this exists alongside the AVM module
 
 `Azure/avm-res-signalrservice-signalr` is *Proposed* rather than published, so there is no AVM module
-to wrap. This one mirrors the AVM interface shapes anyway — `name`, `location`, `parent_id`, `tags`,
+to wrap. This one mirrors the AVM interface shapes anyway — `name`, `location`, `resource_group_name`, `tags`,
 `lock`, `managed_identities`, `role_assignments`, `private_endpoints`, `diagnostic_settings` — so a
 consumer that later moves to AVM is not rewriting call sites.
 
@@ -22,10 +22,10 @@ It is the widest module in the family: it uses all four AzAPI resource kinds (`a
 module "signalr" {
   source = "git::https://github.com/emberstack/terraform.git//src/modules/azure-res-signalrservice-signalr?ref=vX.Y.Z"
 
-  name      = "signalr-example"
-  location  = "westeurope"
-  parent_id = var.resource_group_resource_id
-  sku_name  = "Standard_S1"
+  name                = "signalr-example"
+  location            = "westeurope"
+  resource_group_name = var.resource_group_name
+  sku_name            = "Standard_S1"
 }
 ```
 
@@ -35,10 +35,10 @@ module "signalr" {
 module "signalr" {
   source = "..."
 
-  name      = "signalr-example"
-  location  = "westeurope"
-  parent_id = var.resource_group_resource_id
-  sku_name  = "Premium_P1"
+  name                = "signalr-example"
+  location            = "westeurope"
+  resource_group_name = var.resource_group_name
+  sku_name            = "Premium_P1"
 
   local_auth_enabled            = false  # the default; access keys are refused
   public_network_access_enabled = false
@@ -107,7 +107,9 @@ carries a description, and CI enforces that.
   references each endpoint's *connection name*, which ARM only assigns once the endpoint exists. The
   first apply creates the endpoints; the second writes the ACL. The connection-name data source
   deliberately carries **no** `depends_on` — adding one would make its result unknown at plan whenever
-  the service has a pending change, which crashes the provider inside the ACL body.
+  the service has a pending change, which crashes the provider inside the ACL body. When the connection
+  is not reported yet, a precondition says so and tells you to run apply again, rather than failing with
+  Terraform's bare *"the given key does not identify an element"*.
 - **Role assignments** — both the service-scope map and the per-endpoint maps — follow the family
   pattern described in [Role assignments](../../../docs/role-assignments.md), including why the
   per-endpoint keys must be snake_case.
@@ -115,7 +117,11 @@ carries a description, and CI enforces that.
   ARM's `auth.managedIdentity.resource`, which lands in the `aud` claim of the issued token — the
   portal labels it *"Audience in the issued token"*. Which identity is used comes from the service's own
   `managed_identities` configuration.
-- **`ignore_null_property` is not set on the ACL update.** `azapi_update_resource` does not offer it, so
-  a caller that omits `network_acl.public_network` sends an explicit null for `publicNetwork` against a
-  property ARM returns populated.
-- **RG creation is out of scope.** Pass an existing resource group via `parent_id`.
+- **Omitting `network_acl.public_network` leaves public access as ARM last set it — which is
+  permissive.** ARM always materialises `publicNetwork`; a service that has never been given one reports
+  all four request types allowed. So the module omits the property rather than sending null: null would
+  diff on every plan (`azapi_update_resource` offers no `ignore_null_property` to suppress it), while
+  omitting leaves the live value untouched. The consequence is that `default_action = "Deny"` alone does
+  **not** close public access — pair it with an explicit `public_network` block, as the example above
+  does.
+- **RG creation is out of scope.** Pass the name of an existing resource group via `resource_group_name`; the subscription comes from the configured provider.

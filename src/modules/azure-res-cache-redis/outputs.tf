@@ -23,10 +23,10 @@ output "system_assigned_mi_principal_id" {
 }
 
 output "default_database" {
-  description = "Default database — `id` and `port`."
+  description = "Default database — `resource_id` and `port`."
   value = {
-    id   = azapi_resource.database.id
-    port = try(azapi_resource.database.output.port, null)
+    resource_id = azapi_resource.database.id
+    port        = try(azapi_resource.database.output.port, null)
   }
 }
 
@@ -40,7 +40,7 @@ output "private_endpoints" {
   EOT
   value = {
     for k, v in azapi_resource.private_endpoint : k => {
-      id                = v.id
+      resource_id       = v.id
       name              = v.name
       network_interface = try(v.output.network_interfaces[0], null)
       private_ip_address = try(
@@ -56,8 +56,8 @@ output "diagnostic_settings" {
   description = "Map of diagnostic settings keyed by the input map key."
   value = {
     for k, v in azapi_resource.diagnostic_settings : k => {
-      id   = v.id
-      name = v.name
+      resource_id = v.id
+      name        = v.name
     }
   }
 }
@@ -66,14 +66,13 @@ output "role_assignments" {
   description = "Map of cluster-scoped role assignments keyed by the input map key."
   value = {
     for k, v in azapi_resource.role_assignments : k => {
-      id           = v.id
+      resource_id  = v.id
       principal_id = var.role_assignments[k].principal_id
     }
   }
 }
 
 output "resource" {
-  description = "The full cluster resource. Sensitive — prefer the focused outputs."
-  sensitive   = true
+  description = "The full cluster resource. Prefer the focused outputs; this one is an escape hatch. Not marked sensitive: the body carries no key material — `customerManagedKeyEncryption` holds a Key Vault key URL, which is a reference gated by RBAC, and the access keys come from the separate `access_keys` output."
   value       = azapi_resource.this
 }

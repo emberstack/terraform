@@ -167,6 +167,11 @@ variable "location" {
   type        = string
   default     = null
   description = "Location for the assignment's managed identity. Required when `managed_identities.system_assigned = true`."
+
+  validation {
+    condition     = !var.managed_identities.system_assigned || var.location != null
+    error_message = "location is required when managed_identities.system_assigned = true — ARM rejects a system-assigned identity without one."
+  }
 }
 
 variable "managed_identities" {
@@ -219,4 +224,12 @@ variable "identity_role_assignments" {
     assignment).
   EOT
   nullable    = false
+
+  validation {
+    condition = alltrue([
+      for assignment in var.identity_role_assignments :
+      assignment.name == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", assignment.name))
+    ])
+    error_message = "identity_role_assignments `name`, when supplied, must be a lowercase GUID (e.g. 11111111-1111-1111-1111-111111111111)."
+  }
 }

@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------------
+
 variable "name" {
   type        = string
   description = "Name of the virtual network link."
@@ -21,6 +25,10 @@ variable "virtual_network_resource_id" {
   nullable    = false
 }
 
+# -----------------------------------------------------------------------------
+# Optional — behaviour
+# -----------------------------------------------------------------------------
+
 variable "registration_enabled" {
   type        = bool
   default     = false
@@ -38,6 +46,10 @@ variable "resolution_policy" {
     error_message = "resolution_policy must be null, `Default`, or `NxDomainRedirect`."
   }
 }
+
+# -----------------------------------------------------------------------------
+# Optional — metadata
+# -----------------------------------------------------------------------------
 
 variable "tags" {
   type        = map(string)
