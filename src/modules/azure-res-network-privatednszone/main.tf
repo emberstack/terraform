@@ -15,20 +15,23 @@ locals {
   # The input stays a plain resource group name (AVM's shape); the subscription
   # comes from the configured provider, so an aliased or multi-subscription
   # caller still lands in the right place.
-  subscription_resource_id   = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
-  resource_group_resource_id = "${local.subscription_resource_id}/resourceGroups/${var.resource_group_name}"
+  provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+  resource_group_resource_id        = "${local.provider_subscription_resource_id}/resourceGroups/${var.resource_group_name}"
 
-  role_definition_name_to_resource_id = length(var.role_assignments) > 0 ? {
+  # Every role this module assigns, as the caller spelled it — a display name or an
+  # ARM resource ID. Deduplication happens in `role_definition_resource_ids`.
+  role_definition_names = [for v in values(var.role_assignments) : v.role_definition_id_or_name]
+
+  role_definition_name_to_resource_id = length(local.role_definition_names) > 0 ? {
     for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
   } : {}
 
-  # An entry that is already a resource ID falls through the lookup untouched.
+  # Keyed by role, not by assignment key: a role definition is a property of the
+  # ROLE, so two assignments naming the same role share one entry. An entry that is
+  # already a resource ID falls through the lookup untouched and maps to itself.
   role_definition_resource_ids = {
-    for k, v in var.role_assignments : k => lookup(
-      local.role_definition_name_to_resource_id,
-      v.role_definition_id_or_name,
-      v.role_definition_id_or_name
-    )
+    for name in toset(local.role_definition_names) :
+    name => lookup(local.role_definition_name_to_resource_id, name, name)
   }
 }
 
@@ -89,9 +92,9 @@ resource "azapi_resource" "soa" {
 # assignment.
 
 data "azapi_resource_list" "role_definitions" {
-  count = length(var.role_assignments) > 0 ? 1 : 0
+  count = length(local.role_definition_names) > 0 ? 1 : 0
 
-  parent_id = local.subscription_resource_id
+  parent_id = local.provider_subscription_resource_id
   type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
   response_export_values = {
     results = "value[].{id: id, role_name: properties.roleName}"
@@ -116,7 +119,7 @@ resource "azapi_resource" "role_assignments" {
       description                        = each.value.description
       principalId                        = each.value.principal_id
       principalType                      = each.value.principal_type
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
 
@@ -126,7 +129,7 @@ resource "azapi_resource" "role_assignments" {
       # `role_definition_resource_ids` and reaches ARM as a bare string in
       # `roleDefinitionId`, which fails with an error naming neither the role nor
       # this assignment. Every resolved value is an ARM ID, so it starts with "/".
-      condition     = startswith(local.role_definition_resource_ids[each.key], "/")
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
       error_message = <<-EOT
         role_assignments["${each.key}"] names the role "${each.value.role_definition_id_or_name}",
         which matched no role definition.

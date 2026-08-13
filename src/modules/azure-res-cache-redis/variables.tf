@@ -289,7 +289,6 @@ variable "private_endpoints" {
       role_definition_id_or_name             = string
       principal_id                           = string
       description                            = optional(string, null)
-      skip_service_principal_aad_check       = optional(bool, false)
       condition                              = optional(string, null)
       condition_version                      = optional(string, null)
       delegated_managed_identity_resource_id = optional(string, null)
@@ -324,10 +323,9 @@ variable "private_endpoints" {
     handles: a per-endpoint role assignment's state address is the two keys joined
     with `-`, so the keys themselves must not contain that separator.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
+    Set `principal_type = "ServicePrincipal"` when the principal is a service principal
+    or a managed identity, so ARM skips the directory lookup that fails on a principal
+    created moments earlier.
   EOT
   nullable    = false
 
@@ -373,7 +371,6 @@ variable "role_assignments" {
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
     condition                              = optional(string, null)
     condition_version                      = optional(string, null)
     delegated_managed_identity_resource_id = optional(string, null)
@@ -390,10 +387,9 @@ variable "role_assignments" {
     generated — unless you are adopting an assignment that already exists, where the
     existing GUID must be supplied to avoid a destroy-and-recreate.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
+    Set `principal_type = "ServicePrincipal"` when the principal is a service principal
+    or a managed identity, so ARM skips the directory lookup that fails on a principal
+    created moments earlier.
   EOT
   nullable    = false
 

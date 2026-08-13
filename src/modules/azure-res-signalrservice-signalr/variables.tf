@@ -61,9 +61,9 @@ variable "sku_capacity" {
   EOT
   nullable    = false
 
-  # A plain 1–100 range was wrong in both directions: it accepted 11–19, which no
-  # SKU offers, and rejected the 200–1000 that Premium_P2 requires. Sets taken from
-  # ResourceSku.capacity in the signalr 2024-03-01 swagger, checked 2026-08-13.
+  # Each SKU allows a specific set of unit counts rather than a range: no SKU offers
+  # 11–19, and only Premium_P2 goes above 100. Sets taken from ResourceSku.capacity
+  # in the signalr 2024-03-01 swagger, checked 2026-08-13.
   validation {
     condition = (
       var.sku_name == "Free_F1" ? var.sku_capacity == 1 :
@@ -131,9 +131,6 @@ variable "upstream_endpoints" {
       shown in the portal as "Audience in the issued token". It is *not* a
       managed identity resource ID. Which identity is used follows the
       service's own `managed_identities` configuration.
-
-    Breaking change: this field was previously named `user_assigned_identity_id`,
-    which described neither its value nor its effect.
   EOT
   nullable    = false
 }
@@ -249,7 +246,6 @@ variable "private_endpoints" {
       role_definition_id_or_name             = string
       principal_id                           = string
       description                            = optional(string, null)
-      skip_service_principal_aad_check       = optional(bool, false)
       condition                              = optional(string, null)
       condition_version                      = optional(string, null)
       delegated_managed_identity_resource_id = optional(string, null)
@@ -280,10 +276,9 @@ variable "private_endpoints" {
   description = <<-EOT
     Private endpoints keyed by stable name. Shape mirrors AVM standard.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
+    Set `principal_type = "ServicePrincipal"` when the principal is a service principal
+    or a managed identity, so ARM skips the directory lookup that fails on a principal
+    created moments earlier.
 
     Map keys — both the endpoint keys and the nested `role_assignments` keys — must
     be snake_case handles (`^[a-z0-9]+(_[a-z0-9]+)*$`), see the validations below.
@@ -394,7 +389,6 @@ variable "role_assignments" {
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
     condition                              = optional(string, null)
     condition_version                      = optional(string, null)
     delegated_managed_identity_resource_id = optional(string, null)
@@ -407,10 +401,9 @@ variable "role_assignments" {
     `role_definition_id_or_name` accepts either a role name (e.g. `"Reader"`) or
     a full role definition resource ID. Auto-routed by the leading `/`.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect. ARM's equivalent is `principalType`, which this module already
-    exposes: set `principal_type = "ServicePrincipal"` so ARM skips the directory
-    lookup that fails on a principal created moments earlier.
+    Set `principal_type = "ServicePrincipal"` when the principal is a service principal
+    or a managed identity, so ARM skips the directory lookup that fails on a principal
+    created moments earlier.
   EOT
   nullable    = false
 

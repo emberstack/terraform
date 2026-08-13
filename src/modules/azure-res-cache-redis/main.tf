@@ -70,18 +70,26 @@ locals {
     : local.customer_managed_key_identity_types[var.customer_managed_key_encryption.identity_type]
   )
 
-  role_definition_name_to_resource_id = length(local.all_role_assignments) > 0 ? {
+  # Every role this module assigns across both scopes, as the caller spelled it — a
+  # display name or an ARM resource ID. Concatenated rather than merged: the two
+  # keyspaces can collide (a service-scope key `a-b` against the `<pe>-<ra>`
+  # composite), and a merge would silently drop a role. Deduplication happens in
+  # `role_definition_resource_ids`.
+  role_definition_names = concat(
+    [for v in values(var.role_assignments) : v.role_definition_id_or_name],
+    [for v in values(local.private_endpoint_role_assignments) : v.role_definition_id_or_name],
+  )
+
+  role_definition_name_to_resource_id = length(local.role_definition_names) > 0 ? {
     for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
   } : {}
 
-  # Keyed by role name, not by assignment key — a role definition is per role, and
-  # the same role may be assigned at both scopes. An entry that is already a
-  # resource ID falls through the lookup untouched and maps to itself.
+  # Keyed by role, not by assignment key: a role definition is a property of the
+  # ROLE, so two assignments naming the same role share one entry. An entry that is
+  # already a resource ID falls through the lookup untouched and maps to itself.
   role_definition_resource_ids = {
-    for name in toset(concat(
-      [for v in values(var.role_assignments) : v.role_definition_id_or_name],
-      [for v in values(local.private_endpoint_role_assignments) : v.role_definition_id_or_name],
-    )) : name => lookup(local.role_definition_name_to_resource_id, name, name)
+    for name in toset(local.role_definition_names) :
+    name => lookup(local.role_definition_name_to_resource_id, name, name)
   }
 
   # Per-PE role assignments, flattened across all (pe, ra) pairs.
@@ -93,11 +101,6 @@ locals {
       for ra_k, ra_v in pe_v.role_assignments : "${pe_k}-${ra_k}" => merge(ra_v, { pe_key = pe_k, ra_key = ra_k })
     }
   ]...)
-
-  # Only the length of this is read: it gates the roleDefinitions listing so the
-  # data source is skipped when there is no assignment at either scope. A key
-  # collision between the two keyspaces is harmless for that purpose.
-  all_role_assignments = merge(var.role_assignments, local.private_endpoint_role_assignments)
 }
 
 # -----------------------------------------------------------------------------
@@ -219,7 +222,7 @@ resource "azapi_resource" "lock" {
 # assignment.
 
 data "azapi_resource_list" "role_definitions" {
-  count = length(local.all_role_assignments) > 0 ? 1 : 0
+  count = length(local.role_definition_names) > 0 ? 1 : 0
 
   parent_id = local.provider_subscription_resource_id
   type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"

@@ -218,7 +218,6 @@ variable "identity_role_assignments" {
     role_definition_id_or_name             = string
     scope                                  = optional(string, null)
     description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
     condition                              = optional(string, null)
     condition_version                      = optional(string, null)
     delegated_managed_identity_resource_id = optional(string, null)
@@ -234,10 +233,9 @@ variable "identity_role_assignments" {
     `role_definition_id_or_name` accepts either a role display name or an ARM
     role-definition resource ID — auto-routed by the leading `/`.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has
-    no effect: this module always sends `principalType = "ServicePrincipal"`, which
-    is ARM's equivalent, so the lookup that fails on a freshly created principal is
-    already skipped for every assignment.
+    Every assignment is sent with `principalType = "ServicePrincipal"`, since the
+    principal is always the assignment's own identity, so ARM skips the directory
+    lookup that fails on a freshly created principal.
 
     Has no effect when `managed_identities.system_assigned = false`. For UAIs,
     manage role assignments on the UAI directly (they outlive the policy

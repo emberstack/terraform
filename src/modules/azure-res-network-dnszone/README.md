@@ -4,7 +4,7 @@ Creates an Azure public DNS zone (`Microsoft.Network/dnsZones`) with optional SO
 
 ## Why this exists alongside the AVM module
 
-The AVM module [`Azure/avm-res-network-dnszone/azurerm`](https://registry.terraform.io/modules/Azure/avm-res-network-dnszone/azurerm/latest) covers zone creation and inline record-set creation, but does not (as of v0.2.x) expose:
+The AVM module [`Azure/avm-res-network-dnszone/azurerm`](https://registry.terraform.io/modules/Azure/avm-res-network-dnszone/azurerm/latest) covers zone creation and inline record-set creation, but does not expose:
 
 - **SOA record customization** — email, TTLs, expiration tuning. AVM uses provider defaults only.
 - **Zone-scope `role_assignments`** — the standard AVM IAM interface block is absent.

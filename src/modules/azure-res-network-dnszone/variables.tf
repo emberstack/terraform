@@ -11,14 +11,13 @@ variable "name" {
   # each label made of alphanumerics, underscores and hyphens. Checked 2026-08-13
   # against the resource-name-rules table.
   #
-  # The regex this replaced was wrong in both directions. It bounded each label but
-  # never the whole name, so a 64-character zone passed here and failed at ARM. And
-  # it was stricter than Azure in requiring an all-alphabetic final label and
-  # disallowing underscores, so it rejected legal names like `db.k8s1`.
+  # The whole name is length-bounded as well as each label, so a 64-character zone is
+  # rejected here rather than at ARM. Underscores are legal and the final label need
+  # not be alphabetic, so names like `db.k8s1` pass.
   #
-  # The no-leading and no-trailing hyphen rule is not in that table — it is DNS
-  # itself (RFC 1123: labels start and end alphanumeric). The old regex enforced it,
-  # so it is kept deliberately rather than loosened away with the rest.
+  # The no-leading and no-trailing hyphen rule is stricter than that table: it comes
+  # from DNS itself (RFC 1123 — labels start and end alphanumeric), and is enforced
+  # deliberately.
   validation {
     condition = (
       length(var.name) >= 1 && length(var.name) <= 63 &&
@@ -102,7 +101,6 @@ variable "role_assignments" {
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
     condition                              = optional(string, null)
     condition_version                      = optional(string, null)
     delegated_managed_identity_resource_id = optional(string, null)
@@ -120,10 +118,8 @@ variable "role_assignments" {
     are adopting an assignment that already exists, where the existing GUID must be supplied to avoid a
     destroy-and-recreate.
 
-    `skip_service_principal_aad_check` is accepted for interface compatibility and has no effect. ARM's
-    equivalent is `principalType`, which this module already exposes: set
-    `principal_type = "ServicePrincipal"` so ARM skips the directory lookup that fails on a principal
-    created moments earlier.
+    Set `principal_type = "ServicePrincipal"` when the principal is a service principal or a managed
+    identity, so ARM skips the directory lookup that fails on a principal created moments earlier.
 
     Do not edit `principal_id` or `role_definition_id_or_name` on an existing key — ARM rejects the update.
     Add a new key and remove the old one instead.

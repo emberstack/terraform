@@ -5,9 +5,8 @@
 #   - management_group_id set  -> scoped to that management group
 #   - management_group_id null -> scoped to the current subscription
 #
-# `policy_rule`, `parameters` and `metadata` are sent as native objects. The
-# azurerm resource required them JSON-encoded into strings; AzAPI does not, so
-# the module no longer encodes on the caller's behalf.
+# `policy_rule`, `parameters` and `metadata` are sent as native objects, not as
+# JSON-encoded strings — pass them as HCL objects.
 #
 # Azure injects `createdBy`/`createdOn`/`updatedBy`/`updatedOn` into `metadata`
 # alongside whatever the caller sets. They are server-maintained and not sent.

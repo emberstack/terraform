@@ -9,9 +9,7 @@
 #   /subscriptions/<sub>/resourceGroups/<rg>                -> resource group
 #   /subscriptions/<sub>/resourceGroups/<rg>/providers/...  -> resource
 #
-# The azurerm provider needed a distinct resource type per scope and a
-# `terraform_data` precondition to police the routing; both are gone. Scope
-# shape is now checked by a variable validation instead.
+# Scope shape is checked by a validation on the `scope` variable.
 #
 # `policyExemptions` has never shipped a stable API version. 2022-07-01-preview
 # is pinned deliberately — it is the version these exemptions were created with,
@@ -19,8 +17,8 @@
 # =============================================================================
 
 locals {
-  # Kept only to preserve the `scope_kind` output; the resource itself no longer
-  # branches on it, since the scope is just `parent_id`.
+  # Feeds the `scope_kind` output only. The resource does not branch on it — the
+  # scope is simply `parent_id`.
   #
   # Every matcher folds case (`(?i)`) because ARM ID segment names are
   # case-insensitive: `resourceGroups` can arrive as `RESOURCEGROUPS` and Azure

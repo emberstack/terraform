@@ -98,12 +98,12 @@ and the assignment key with `-`. Both keys are therefore validated as lower-case
 address, since `("a-b", "c")` and `("a", "b-c")` both produce `a-b-c`. A collision silently drops one
 assignment out of `for_each`, which on apply destroys a live grant.
 
-## `skip_service_principal_aad_check` does nothing
+## Freshly created principals
 
-It is accepted for AVM interface compatibility. ARM's equivalent is `principalType`: set
-`principal_type = "ServicePrincipal"` and ARM skips the directory lookup that fails on a principal
-created moments earlier. `azure-res-policy-assignment` always sends `ServicePrincipal`, since the
-principal is always the assignment's own identity.
+ARM validates that the principal exists in the directory, and that lookup fails on a principal
+created moments earlier. Set `principal_type = "ServicePrincipal"` to skip it.
+`azure-res-policy-assignment` always sends `ServicePrincipal`, since the principal is always the
+assignment's own identity.
 
 ## Required permissions
 

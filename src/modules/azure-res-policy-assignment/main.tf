@@ -9,9 +9,7 @@
 #   /subscriptions/<sub>/resourceGroups/<rg>                -> resource group
 #   /subscriptions/<sub>/resourceGroups/<rg>/providers/...  -> resource
 #
-# The azurerm provider needed a distinct resource type per scope and a
-# `terraform_data` precondition to police the routing; both are gone. Scope
-# shape is now checked by a variable validation instead.
+# Scope shape is checked by a validation on the `scope` variable.
 #
 # When a managed identity is enabled, optional `identity_role_assignments` grant
 # the system-assigned identity the roles a DeployIfNotExists / Modify policy
@@ -21,7 +19,11 @@
 data "azapi_client_config" "current" {}
 
 locals {
-  subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
+  # The subscription the provider is configured against. Used to list the
+  # roleDefinitions catalogue. Built-in roles are present in every subscription,
+  # so this resolves any built-in name; a CUSTOM role defined in a different
+  # subscription is not in this listing and must be passed as a resource ID.
+  provider_subscription_resource_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}"
 
   has_user_assigned   = length(var.managed_identities.user_assigned_resource_ids) > 0
   has_system_assigned = var.managed_identities.system_assigned
@@ -39,8 +41,8 @@ locals {
   # it must — the role assignments below depend on it.
   system_identity_principal_id = local.has_system_assigned ? try(azapi_resource.this.identity[0].principal_id, null) : null
 
-  # Kept only to preserve the `scope_kind` output; the resource itself no longer
-  # branches on it, since the scope is just `parent_id`.
+  # Feeds the `scope_kind` output only. The resource does not branch on it — the
+  # scope is simply `parent_id`.
   #
   # Every matcher folds case, matching the `scope` validation: ARM segment names
   # are case-insensitive, so a `RESOURCEGROUPS`-cased scope is a valid resource
@@ -53,17 +55,20 @@ locals {
     "subscription"
   )
 
-  role_definition_name_to_resource_id = length(var.identity_role_assignments) > 0 ? {
+  # Every role this module assigns, as the caller spelled it — a display name or an
+  # ARM resource ID. Deduplication happens in `role_definition_resource_ids`.
+  role_definition_names = [for v in values(var.identity_role_assignments) : v.role_definition_id_or_name]
+
+  role_definition_name_to_resource_id = length(local.role_definition_names) > 0 ? {
     for definition in data.azapi_resource_list.role_definitions[0].output.results : definition.role_name => definition.id
   } : {}
 
-  # An entry that is already a resource ID falls through the lookup untouched.
+  # Keyed by role, not by assignment key: a role definition is a property of the
+  # ROLE, so two assignments naming the same role share one entry. An entry that is
+  # already a resource ID falls through the lookup untouched and maps to itself.
   role_definition_resource_ids = {
-    for k, v in var.identity_role_assignments : k => lookup(
-      local.role_definition_name_to_resource_id,
-      v.role_definition_id_or_name,
-      v.role_definition_id_or_name
-    )
+    for name in toset(local.role_definition_names) :
+    name => lookup(local.role_definition_name_to_resource_id, name, name)
   }
 }
 
@@ -142,9 +147,9 @@ resource "azapi_resource" "this" {
 # gated on `local.has_system_assigned`.
 
 data "azapi_resource_list" "role_definitions" {
-  count = length(var.identity_role_assignments) > 0 ? 1 : 0
+  count = length(local.role_definition_names) > 0 ? 1 : 0
 
-  parent_id = local.subscription_resource_id
+  parent_id = local.provider_subscription_resource_id
   type      = "Microsoft.Authorization/roleDefinitions@2022-04-01"
   response_export_values = {
     results = "value[].{id: id, role_name: properties.roleName}"
@@ -169,16 +174,15 @@ resource "azapi_resource" "identity_role_assignments" {
       description                        = each.value.description
       principalId                        = local.system_identity_principal_id
       principalType                      = "ServicePrincipal"
-      roleDefinitionId                   = local.role_definition_resource_ids[each.key]
+      roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
-  # Measured 2026-08-10 against roleAssignments@2022-04-01: ARM echoes an unset
-  # `condition`, `conditionVersion`, `delegatedManagedIdentityResourceId` and
-  # `description` back as explicit null, NOT as "". So a null sent here already
-  # matches what ARM returns and this flag is belt-and-braces, not load-bearing.
-  # Corroborated by azure-res-network-dnszone and -privatednszone, which write the
-  # same body without the flag and plan clean against live assignments.
-  # Kept because removing it is a behaviour change with nothing to gain.
+  # ARM echoes an unset `condition`, `conditionVersion`,
+  # `delegatedManagedIdentityResourceId` and `description` back as explicit null,
+  # not as "" (measured 2026-08-10 against roleAssignments@2022-04-01), so a null
+  # sent here already matches the response and this flag suppresses nothing. The
+  # four sibling modules write the same body without it. Removing it changes the
+  # request payload, so it wants a canary rather than a silent edit.
   ignore_null_property = true
 
   lifecycle {
@@ -187,7 +191,7 @@ resource "azapi_resource" "identity_role_assignments" {
       # `role_definition_resource_ids` and reaches ARM as a bare string in
       # `roleDefinitionId`, which fails with an error naming neither the role nor
       # this assignment. Every resolved value is an ARM ID, so it starts with "/".
-      condition     = startswith(local.role_definition_resource_ids[each.key], "/")
+      condition     = startswith(local.role_definition_resource_ids[each.value.role_definition_id_or_name], "/")
       error_message = <<-EOT
         identity_role_assignments["${each.key}"] names the role
         "${each.value.role_definition_id_or_name}", which matched no role definition.
