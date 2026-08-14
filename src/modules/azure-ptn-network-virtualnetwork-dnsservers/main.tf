@@ -10,8 +10,9 @@
 # Splitting DNS-server assignment into a downstream module breaks the cycle.
 #
 # The vnet is owned by another module (typically AVM). That owner must not clear
-# `dhcpOptions` on its own writes — see the README for the `ignore_changes`
-# contract callers are expected to honour.
+# `dhcpOptions` on its own writes. Whether it would depends on the owner's
+# provider and on whether it sends the property as null — see the README, which
+# covers both the azurerm and AzAPI cases.
 #
 # ARM exposes no property-level PATCH for virtual networks (only tags), so this
 # is a read-merge-write of the whole vnet. Everything not named in `body` is
