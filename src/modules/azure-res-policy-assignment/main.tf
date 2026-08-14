@@ -177,13 +177,13 @@ resource "azapi_resource" "identity_role_assignments" {
       roleDefinitionId                   = local.role_definition_resource_ids[each.value.role_definition_id_or_name]
     }
   }
-  # ARM echoes an unset `condition`, `conditionVersion`,
+  # Deliberately no `ignore_null_property`, matching the four sibling modules that
+  # write this same body. ARM echoes an unset `condition`, `conditionVersion`,
   # `delegatedManagedIdentityResourceId` and `description` back as explicit null,
-  # not as "" (measured 2026-08-10 against roleAssignments@2022-04-01), so a null
-  # sent here already matches the response and this flag suppresses nothing. The
-  # four sibling modules write the same body without it. Removing it changes the
-  # request payload, so it wants a canary rather than a silent edit.
-  ignore_null_property = true
+  # not as "" (measured 2026-08-10 against roleAssignments@2022-04-01), so the nulls
+  # sent here already match the response and the flag would suppress nothing. Those
+  # four are every nullable property in this body — the rest are a literal, a
+  # resolved role ID, and a principal ID gated on `has_system_assigned`.
 
   lifecycle {
     precondition {
