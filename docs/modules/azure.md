@@ -19,6 +19,7 @@ lacks. Keep new inputs shaped the AVM way.
 |---|---|
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
+| [`azure-res-kubernetesconfiguration-extension`](../../src/modules/azure-res-kubernetesconfiguration-extension/) | Cluster extension on AKS, Arc or AKS hybrid, with management lock and role assignments for the extension's identity |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
 | [`azure-res-policy-assignment`](../../src/modules/azure-res-policy-assignment/) | Policy or initiative assignment, [scope-routed](#scope-routing) |
