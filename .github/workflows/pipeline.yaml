@@ -26,7 +26,7 @@ concurrency:
 env:
   # Matches the `required_version = ">= 1.15"` floor every module declares, so
   # CI proves the floor is honest rather than testing some newer version.
-  TERRAFORM_VERSION: "1.15.8"
+  TERRAFORM_VERSION: "1.15.9"
   TF_IN_AUTOMATION: "1"
   TF_INPUT: "0"
 
