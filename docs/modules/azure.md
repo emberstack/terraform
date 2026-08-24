@@ -22,6 +22,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-kubernetesconfiguration-extension`](../../src/modules/azure-res-kubernetesconfiguration-extension/) | Cluster extension on AKS, Arc or AKS hybrid, with management lock and role assignments for the extension's identity |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
+| [`azure-res-network-privateendpoint`](../../src/modules/azure-res-network-privateendpoint/) | Standalone private endpoint against a target owned elsewhere, [automatic or manual](#manual-connection-approval), with DNS zone group, management lock and role assignments |
 | [`azure-res-policy-assignment`](../../src/modules/azure-res-policy-assignment/) | Policy or initiative assignment, [scope-routed](#scope-routing) |
 | [`azure-res-policy-definition`](../../src/modules/azure-res-policy-definition/) | Policy definition |
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
@@ -69,6 +70,38 @@ When a managed identity is enabled on an assignment, `identity_role_assignments`
 system-assigned identity the roles a `DeployIfNotExists` or `Modify` policy needs — at the assignment
 scope by default, or at any scope you name. That second case matters when the policy remediates into a
 different resource group or subscription than the one it is assigned at.
+
+## Manual connection approval
+
+`azure-res-network-privateendpoint` covers the case the service-owning modules do not: an endpoint
+whose target belongs to someone else. Where a module wraps its own private-linkable service —
+`azure-res-cache-redis`, `azure-res-signalrservice-signalr` — its built-in `private_endpoints` input
+stays the right tool, because it can reference the target resource directly.
+
+ARM carries the connection in one of two mutually exclusive body properties, and `is_manual_connection`
+picks which:
+
+| | `privateLinkServiceConnections` | `manualPrivateLinkServiceConnections` |
+|---|---|---|
+| `is_manual_connection` | `false` (default) | `true` |
+| Approved | on creation | out of band, by the target's owner |
+| Needs | write access on the target | nothing — the request is queued |
+| Extra input | — | optional `request_message`, capped at 140 chars by ARM |
+
+Both arrays are always sent, one populated and one empty. An ARM write is a full replace, so omitting
+the unused one would leave the previous connection in place when the flag is flipped.
+
+**A `Pending` endpoint is a successful apply, not a failed one.** The endpoint exists and holds a
+subnet address; no traffic crosses it until the owner approves, and no DNS records appear in a zone
+group before then. Terraform has no part in the approval and does not wait for it — read the
+`connection_status` output on a later refresh, and gate anything downstream on it rather than on apply
+having succeeded.
+
+Cross-tenant targets — MongoDB Atlas, Snowflake, Databricks — only offer the manual path. They also
+tend to identify the connection by name on their side, so set `private_service_connection_name`
+explicitly instead of taking the `<name>-psc` default. A Private Link Service target publishes no
+group IDs, so leave `subresource_names` empty; it is the same reason
+`az network private-endpoint create` takes no `--group-id` against one.
 
 ## Aegis
 
