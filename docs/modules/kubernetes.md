@@ -8,6 +8,7 @@ Modules on the `hashicorp/kubernetes` provider.
 |---|---|---|
 | [`kubernetes-res-namespace`](../../src/modules/kubernetes-res-namespace/) | A single namespace, with its labels and annotations | — |
 | [`kubernetes-res-secret`](../../src/modules/kubernetes-res-secret/) | A single Secret, including its write-only content variants | — |
+| [`kubernetes-res-serviceaccount`](../../src/modules/kubernetes-res-serviceaccount/) | A single ServiceAccount, with its secrets and image pull secrets | — |
 
 ## ⚠️ Destroying a namespace destroys everything in it
 
@@ -187,9 +188,57 @@ Kubernetes accepts arbitrary custom Secret types alongside the well-known ones, 
 list here would reject working configurations. The module takes whatever it is handed. See
 [Conventions](../conventions.md#validation).
 
+## Identity federation is labels and annotations, nothing more
+
+`kubernetes-res-serviceaccount` carries no cloud-specific inputs. Azure workload identity, GCP
+Workload Identity and EKS IRSA are all configured through ordinary metadata, so they go in `labels`
+and `annotations` and the module stays free of any one cloud's vocabulary.
+
+For Azure workload identity that means **both** of these, not either:
+
+```hcl
+labels = {
+  "azure.workload.identity/use" = "true"
+}
+
+annotations = {
+  "azure.workload.identity/client-id" = module.identity.client_id
+}
+```
+
+The label opts pods using the account into the mutating webhook; the annotation names the identity.
+The label alone injects nothing, and the annotation alone is never read — a workload that fails to
+get a token has usually lost one of the pair.
+
+## `default_secret_name` is not exposed
+
+The provider still has the attribute and marks it **deprecated**, so surfacing it emits a warning on
+every consumer's `terraform validate`. It would also be blank: Kubernetes 1.24 stopped auto-creating
+the token Secret it named. Use the TokenRequest API, or a hand-made
+`kubernetes.io/service-account-token` Secret, for a token you can actually read.
+
+Confirmed against a live account — its stored `default_secret_name` is `''`.
+
+## Adopting a ServiceAccount imports cleanly
+
+Unlike the Secret module, `import` is fine here. MEASURED against a live account carrying workload
+identity metadata: importing and planning with `automount_service_account_token` left null gives
+
+```
+ACTIONS: ['no-op']
+```
+
+`automount_service_account_token` is a real field on the object, so the provider reads it back —
+there is no equivalent of the Secret module's `wait_for_service_account_token` artifact.
+
+⚠️ One address detail when adopting from a `for_each` module: the old address carries the map key
+(`kubernetes_service_account_v1.this["service"]`) and this module has none, so the move is
+`state mv 'kubernetes_service_account_v1.this["service"]' kubernetes_service_account_v1.this`.
+
 ## `generate_name` is deliberately not exposed
 
-The provider offers a server-assigned random suffix on both resources. Neither module exposes it,
-for the same reason: a name that only exists after apply cannot be referenced by whatever depends on
-it. A namespace is created ahead of a workload so the workload can name it; a Secret is created so a
-pod can mount it. Both modules take `name` and nothing else.
+The provider offers a server-assigned random suffix on all three resources. None of these modules
+exposes it, for the same reason: a name that only exists after apply cannot be referenced by whatever
+depends on it. A namespace is created ahead of a workload so the workload can name it, a Secret so a
+pod can mount it, a ServiceAccount so a pod spec can set `serviceAccountName`. All three take `name`
+and nothing else.
