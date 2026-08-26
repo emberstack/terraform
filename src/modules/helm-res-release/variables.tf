@@ -307,12 +307,6 @@ variable "force_update" {
   default     = null
 }
 
-variable "recreate_pods" {
-  type        = bool
-  description = "Restart the release's pods on upgrade or rollback. A blunt instrument — every pod in the release goes down and comes back rather than rolling, so it is downtime by design. The usual alternative is a checksum annotation on the pod template, which most charts already carry."
-  default     = null
-}
-
 variable "reset_values" {
   type        = bool
   description = "Discard the previous revision's values and apply only what this release supplies."

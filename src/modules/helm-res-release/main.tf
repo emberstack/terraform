@@ -87,7 +87,6 @@ resource "helm_release" "this" {
   max_history      = var.max_history
   replace          = var.replace
   force_update     = var.force_update
-  recreate_pods    = var.recreate_pods
   reset_values     = var.reset_values
   reuse_values     = var.reuse_values
   take_ownership   = var.take_ownership
