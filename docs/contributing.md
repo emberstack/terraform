@@ -454,9 +454,9 @@ to consumers, not a number to keep current — raising a floor forces every cons
 With `rangeStrategy: in-range-only` Renovate never rewrites a declared range, so no provider pull
 request opens and nothing waits on the dashboard either.
 
-That covers provider majors in general: `Azure/azapi`, `hashicorp/azuread`, `fortinetdev/fortios` and
-`integrations/github` all keep a hand-managed floor and a cap below the next major, and crossing a cap
-stays a deliberate manual edit with a plan behind it.
+That covers provider majors in general: `Azure/azapi`, `hashicorp/azuread`, `fortinetdev/fortios`,
+`integrations/github`, `hashicorp/helm` and `hashicorp/kubernetes` all keep a hand-managed floor and
+a cap below the next major, and crossing a cap stays a deliberate manual edit with a plan behind it.
 
 **Terraform itself is tracked in two places, differently.** The `required_version` in every
 `versions.tf` is picked up by the built-in `terraform` manager, so the same rule leaves it alone.

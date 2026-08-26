@@ -14,7 +14,7 @@ azure-res-network-privatednszone
 
 | Segment | Values |
 |---|---|
-| provider | `azure` (azapi), `entra` (azuread), `fortios` (FortiGate), `github` |
+| provider | `azure` (azapi), `entra` (azuread), `fortios` (FortiGate), `github`, `helm`, `kubernetes` |
 | kind | `res`, `ptn`, `utl` |
 
 ### Kinds

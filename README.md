@@ -1,6 +1,6 @@
 # emberstack/terraform
 
-A library of reusable, independently-versioned Terraform modules for Azure, Entra ID, FortiGate and GitHub.
+A library of reusable, independently-versioned Terraform modules for Azure, Entra ID, FortiGate, GitHub, Helm and Kubernetes.
 
 This is a **module library**, not a deployment repository. There is no root configuration, no state and no
 environment composition here — modules are consumed from other repositories by git source ref.
@@ -47,6 +47,8 @@ modules carry nested submodules, documented alongside their parent.
 | Entra ID | `hashicorp/azuread` | [Guide](docs/modules/entra.md) |
 | FortiGate | `fortinetdev/fortios` | [Guide](docs/modules/fortios.md) |
 | GitHub | `integrations/github` | [Guide](docs/modules/github.md) |
+| Helm | `hashicorp/helm` | [Guide](docs/modules/helm.md) |
+| Kubernetes | `hashicorp/kubernetes` | [Guide](docs/modules/kubernetes.md) |
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 # Documentation
 
 Reference material for `emberstack/terraform` — a library of reusable, independently-versioned
-Terraform modules for Azure, Entra ID, FortiGate and GitHub.
+Terraform modules for Azure, Entra ID, FortiGate, GitHub, Helm and Kubernetes.
 
 | Guide | Read it when |
 |---|---|
@@ -21,6 +21,8 @@ works around — and lists every module in it.
 | [Entra ID](modules/entra.md) | `hashicorp/azuread` |
 | [FortiGate](modules/fortios.md) | `fortinetdev/fortios` |
 | [GitHub](modules/github.md) | `integrations/github` |
+| [Helm](modules/helm.md) | `hashicorp/helm` |
+| [Kubernetes](modules/kubernetes.md) | `hashicorp/kubernetes` |
 
 Nested submodules are documented alongside their parents.
 

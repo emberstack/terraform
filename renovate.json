@@ -64,7 +64,7 @@
       "groupName": "terraform-providers"
     },
     {
-      "description": "CI installs the newest patch of the required_version floor on purpose, so the pipeline proves that floor is honest rather than testing something newer than the modules declare. A patch keeps that true and can open on its own. A minor or major breaks it: CI would start validating against a Terraform the modules never promised, and the honest fix is to raise all 74 required_version floors with it, which is a breaking change for consumers. So it waits for a tick",
+      "description": "CI installs the newest patch of the required_version floor on purpose, so the pipeline proves that floor is honest rather than testing something newer than the modules declare. A patch keeps that true and can open on its own. A minor or major breaks it: CI would start validating against a Terraform the modules never promised, and the honest fix is to raise the required_version floor in every versions.tf with it, which is a breaking change for consumers. So it waits for a tick",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["hashicorp/terraform"],
       "matchUpdateTypes": ["minor", "major"],

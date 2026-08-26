@@ -11,7 +11,7 @@ you need the detail, read the doc; when you change a convention, update the doc.
 | Naming, module anatomy, variable and comment style | [docs/conventions.md](docs/conventions.md) |
 | Validation loop, adding a module, deferred work | [docs/contributing.md](docs/contributing.md) |
 | Source refs, pinning, provider wiring, version matrix | [docs/usage.md](docs/usage.md) |
-| Per-family behaviour and quirks | [docs/modules/](docs/modules/) — [azure](docs/modules/azure.md), [entra](docs/modules/entra.md), [fortios](docs/modules/fortios.md), [github](docs/modules/github.md) |
+| Per-family behaviour and quirks | [docs/modules/](docs/modules/) — [azure](docs/modules/azure.md), [entra](docs/modules/entra.md), [fortios](docs/modules/fortios.md), [github](docs/modules/github.md), [helm](docs/modules/helm.md), [kubernetes](docs/modules/kubernetes.md) |
 
 ## What this repository is
 
