@@ -9,6 +9,7 @@ Modules on the `hashicorp/kubernetes` provider.
 | [`kubernetes-res-namespace`](../../src/modules/kubernetes-res-namespace/) | A single namespace, with its labels and annotations | — |
 | [`kubernetes-res-secret`](../../src/modules/kubernetes-res-secret/) | A single Secret, including its write-only content variants | — |
 | [`kubernetes-res-serviceaccount`](../../src/modules/kubernetes-res-serviceaccount/) | A single ServiceAccount, with its secrets and image pull secrets | — |
+| [`kubernetes-res-manifest`](../../src/modules/kubernetes-res-manifest/) | One object of any kind, given as a manifest | — |
 
 ## ⚠️ Destroying a namespace destroys everything in it
 
@@ -234,6 +235,56 @@ there is no equivalent of the Secret module's `wait_for_service_account_token` a
 ⚠️ One address detail when adopting from a `for_each` module: the old address carries the map key
 (`kubernetes_service_account_v1.this["service"]`) and this module has none, so the move is
 `state mv 'kubernetes_service_account_v1.this["service"]' kubernetes_service_account_v1.this`.
+
+## ⚠️ `kubernetes-res-manifest` needs the cluster at plan time
+
+`kubernetes_manifest` fetches the OpenAPI schema for the manifest's `kind` in order to build its
+type, so **the cluster must be reachable to plan at all**. It cannot be created in the same apply as
+the cluster, and a `run --all plan` on a tier whose cluster does not exist yet fails on these units.
+
+The sharper corollary: **a CRD must already exist before a custom resource of that kind can be
+planned.** Terraform cannot apply a CRD and a CR of it in one run — at plan time the kind is absent
+from the OpenAPI document and the plan fails outright. Order the CRD into an earlier unit; where a
+Helm chart installs its own CRDs, depend on that release rather than sitting beside it.
+
+## Adopting a manifest: move state, don't import
+
+`terraform import` populates `object` — the server's view — but leaves `manifest` **null**, because
+the provider cannot know which subset of the object you intend to manage. The next plan therefore
+reads:
+
+```
+ACTIONS: ['update']
+   VALUE DIFF: manifest     before=null  after={...yours...}
+```
+
+MEASURED against a live ClusterIssuer. Applying it is a server-side apply of your manifest, which is
+what you wanted, but it is not a clean adoption.
+
+Where the object is already managed by another Terraform configuration, `state mv` carries `manifest`
+across and plans clean. Confirmed against a live `kubernetes_manifest` in this estate: `manifest` is
+set and `computed_fields` is null in the stored attributes, which is exactly what this module passes.
+
+## `namespace` is null for a cluster-scoped kind
+
+The `namespace` output reads `metadata.namespace` off the applied object through a `try`, so a
+ClusterIssuer, ClusterRole or CRD returns `null` rather than failing. MEASURED against a live
+ClusterIssuer:
+
+```
+name        -> "letsencrypt"
+namespace   -> None
+api_version -> "cert-manager.io/v1"
+kind        -> "ClusterIssuer"
+```
+
+Reading that output without allowing for null is the usual way a caller trips over scope.
+
+## `computed_fields` is how you stop fighting a controller
+
+The provider's default is `["metadata.annotations", "metadata.labels"]` — enough for the annotations
+`kubectl` adds, not enough for a controller that writes into `spec` or `status`. Widen it when
+something else owns part of the object, or every reconcile shows up as drift.
 
 ## `generate_name` is deliberately not exposed
 
