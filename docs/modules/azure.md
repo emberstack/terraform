@@ -34,6 +34,8 @@ lacks. Keep new inputs shaped the AVM way.
 | Module | What it does |
 |---|---|
 | [`azure-ptn-authorization-roledefinition-collection`](../../src/modules/azure-ptn-authorization-roledefinition-collection/) | Many role definitions from one map |
+| [`azure-ptn-compute-virtualmachine-osdisk-networkaccess`](../../src/modules/azure-ptn-compute-virtualmachine-osdisk-networkaccess/) | Public network access and network access policy on an existing VM's OS disk — a post-create PATCH, because the properties live on the disk rather than the VM's storage profile |
+| [`azure-ptn-compute-virtualmachine-runcommand`](../../src/modules/azure-ptn-compute-virtualmachine-runcommand/) | One script inside an existing VM as a managed run command, from inline text, a script URI or the commandId of a script Azure ships, with script failure failing the apply, an optional ARM restart, and a not-ready VM agent absorbed by [retry](#agent-readiness) |
 | [`azure-ptn-compute-virtualmachine-windows-fqdn`](../../src/modules/azure-ptn-compute-virtualmachine-windows-fqdn/) | Windows VM in-guest primary DNS suffix, written by a managed run command (so the guest FQDN matches its public DNS name) and applied by an ARM restart the apply blocks on until the VM is running again |
 | [`azure-ptn-network-dnszone-records`](../../src/modules/azure-ptn-network-dnszone-records/) | A, AAAA, CAA, CNAME, MX, NS, PTR, SRV and TXT records in an existing public zone |
 | [`azure-ptn-network-privatednszone-records`](../../src/modules/azure-ptn-network-privatednszone-records/) | A, AAAA, CNAME, MX, PTR, SRV and TXT records in an existing private zone |
@@ -103,6 +105,34 @@ tend to identify the connection by name on their side, so set `private_service_c
 explicitly instead of taking the `<name>-psc` default. A Private Link Service target publishes no
 group IDs, so leave `subresource_names` empty; it is the same reason
 `az network private-endpoint create` takes no `--group-id` against one.
+
+## Agent readiness
+
+Run Command is delivered by the VM agent, and the write fails while that agent reports NOT READY — a
+real hazard on a freshly created or just-restarted machine.
+`azure-ptn-compute-virtualmachine-runcommand` handles this with azapi's `retry`, applied to both the
+run command and the optional restart: the write itself is retried until it is accepted, which is
+stronger than polling agent status and then racing what you learned, and it keeps the module free of
+provisioners and runner-side tooling.
+
+```hcl
+retry = {
+  error_message_regex = ["<the message from your failed apply>"]
+  interval_seconds    = 10
+}
+```
+
+Patterns are the caller's to supply. The message ARM returns for a not-ready agent varies by OS and
+failure mode, so a pattern hardcoded in the module would be a guess — and a guess that matches nothing
+is worse than none, because it looks like protection without being any. AVM's virtual machine module
+exposes `retry` the same way and hardcodes nothing.
+
+Retrying is bounded by the Terraform context deadline, not a retry count, so `timeouts.create` decides
+how long a not-ready agent is tolerated.
+
+Terraform cannot poll on response content in any case: azapi's `retry` matches *error* responses, and
+an agent that is not ready yet is a `200` whose body simply says so. Retrying the real operation is the
+only provider-native option.
 
 ## Aegis
 
