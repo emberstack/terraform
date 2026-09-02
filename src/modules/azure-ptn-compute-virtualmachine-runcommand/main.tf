@@ -111,8 +111,6 @@ resource "azapi_resource" "run_command" {
   # update. Adopting it needs an apply test first.
   ignore_missing_property = true
 
-  response_export_values = ["properties.provisioningState"]
-
   retry = var.retry
 
   # Terraform's own operation deadline, not the script's. It has to outlast
