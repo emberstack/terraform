@@ -198,15 +198,16 @@ variable "backup_storage_redundancy" {
   default     = null
   description = <<-EOT
     Where backups are stored: `Local` (single datacentre), `Zone` (across zones
-    in the region) or `Geo` (paired region).
+    in the region), `Geo` (paired region) or `GeoZone` (paired region, and zone
+    redundant within each).
 
-    `Geo` is the only one that survives a regional outage. Changing it applies
+    Only `Geo` and `GeoZone` survive the loss of a region. Changing this applies
     to FUTURE backups only - existing ones stay where they were written.
   EOT
 
   validation {
-    condition     = var.backup_storage_redundancy == null || contains(["Geo", "Local", "Zone"], var.backup_storage_redundancy)
-    error_message = "backup_storage_redundancy must be one of: Geo, Local, Zone."
+    condition     = var.backup_storage_redundancy == null || contains(["Geo", "GeoZone", "Local", "Zone"], var.backup_storage_redundancy)
+    error_message = "backup_storage_redundancy must be one of: Geo, GeoZone, Local, Zone."
   }
 }
 
