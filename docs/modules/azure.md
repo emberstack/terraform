@@ -28,6 +28,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
 | [`azure-res-policy-set-definition`](../../src/modules/azure-res-policy-set-definition/) | Policy initiative |
 | [`azure-res-signalrservice-signalr`](../../src/modules/azure-res-signalrservice-signalr/) | SignalR service, with network ACL, private endpoint, diagnostic settings, lock and role assignments |
+| [`azure-res-sql-managedinstance`](../../src/modules/azure-res-sql-managedinstance/) | Azure SQL managed instance, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, threat protection, vulnerability assessment, diagnostic settings, lock and role assignments — identity, key and SKU all in the create PUT, so a CMK instance needs no second pass ([SKU names](#managed-instance-sku-names)) |
 | [`azure-res-sql-server`](../../src/modules/azure-res-sql-server/) | Azure SQL logical server, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, auditing, connection policy, firewall and virtual network rules, private endpoint, diagnostic settings, lock and role assignments (+ [`modules/elastic-pool`](#submodule-elastic-pool-and-database), [`modules/database`](#submodule-elastic-pool-and-database)) |
 
 ## Pattern modules
@@ -158,6 +159,38 @@ tag themselves (Indexed mode does not evaluate resource groups).
 per protected resource. Use it when tagging is impractical, or when protection must exist *before* the
 resource does — tag-based policies only evaluate tags that already exist.
 
+## Managed instance SKU names
+
+`azure-res-sql-managedinstance` sends the body straight through and compares what ARM
+returns, so `sku_name` must be spelled the way the ARM catalogue spells it:
+
+| tier | family | `sku_name` |
+|---|---|---|
+| GeneralPurpose | Gen5 | `GP_Gen5` |
+| GeneralPurpose | Gen8IH | `GP_G8IH` |
+| GeneralPurpose | Gen8IM | `GP_G8IM` |
+| BusinessCritical | Gen5 | `BC_Gen5` |
+| BusinessCritical | Gen8IH | `BC_G8IH` |
+| BusinessCritical | Gen8IM | `BC_G8IM` |
+
+The premium-series names drop the `en`. A configuration carrying azurerm's `BC_Gen8IH`
+is not an ARM SKU name — the provider used to translate it, and nothing translates it
+here, so it diffs on every plan forever. The Gen5 names are unchanged.
+
+Two neighbouring properties normalise the same way, and are the other two worth
+checking when porting a leaf off the azurerm module:
+
+- `backup_storage_redundancy` takes ARM's `Geo` / `GeoZone` / `Local` / `Zone`. An
+  azurerm `GZRS` is `GeoZone` here.
+- `proxy_override` must name the value ARM resolves *to*. Configuring `Default`
+  returns `Redirect`, and the config then never matches the response.
+
+A validation rejects an unknown SKU name, and a precondition rejects a vCore count the
+family does not offer — both list what is valid. The vCore lists were measured against
+`Microsoft.Sql/locations/<region>/capabilities` in northeurope and westeurope, which
+returned identical values; what varies by region is whether a family is offered at
+all, which only ARM can answer.
+
 ## Submodule: elastic-pool and database
 
 [`azure-res-sql-server/modules/elastic-pool`](../../src/modules/azure-res-sql-server/modules/elastic-pool/)
@@ -166,8 +199,14 @@ and
 
 Both take the server's ARM resource ID as `parent_id`, so either can be managed by a
 configuration that does not own the server. A database takes an `elastic_pool_resource_id`
-to join a pool, and then must leave `sku` and `max_size_gb` null - the pool supplies
-both, and ARM rejects them alongside a pool. Preconditions catch each direction.
+to join a pool, and then must leave `sku` null - the pool supplies the tier, and ARM
+rejects a SKU alongside a pool. A standalone database requires one. Preconditions catch
+each direction.
+
+`max_size_gb` is **not** governed by the pool and applies inside one. Every pooled
+database carries its own `maxSizeBytes` — a per-database cap drawn from the pool's
+shared storage — and ARM accepts it. Leaving it null means "whatever the tier
+defaults to", not "inherit the pool".
 
 Sizes are in GB and converted to the bytes ARM wants. The factor is 1024^3, because
 Azure says "GB" and means GiB - `100` sends `107374182400`.
@@ -221,7 +260,13 @@ terraform plan   # expect: No changes
 Take the backup. `state rm` is not reversible without it, and a half-migrated unit is worse than an
 unmigrated one.
 
-Five things that are easy to get wrong:
+Six things that are easy to get wrong:
+
+- **`azapi_update_resource` cannot be imported at all.** `terraform import` answers
+  *"Resource Import Not Implemented"*. Modules use it for the ARM singletons the service
+  materialises alongside their parent, so those addresses have to be left to *create* —
+  each one is a PATCH, and against an already-correct child it writes nothing. A
+  post-migration plan reading `N to add` is expected there, not a failed import.
 
 - **Role assignments** must have their `random_uuid` imported with the *existing* assignment GUID, or a
   fresh UUID is generated and the assignment is replaced — a brief loss of access on apply. Supplying

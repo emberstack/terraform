@@ -18,8 +18,10 @@
 # at `PT0S` everywhere, and the job here is to PATCH them into shape.
 #
 # `max_size_gb` and the SKU are rejected at ARM rather than at plan when wrong,
-# because what a tier accepts varies by region and offer. Inside a pool both are
-# governed by the pool instead - see the preconditions below.
+# because what a tier accepts varies by region and offer. Inside a pool the SKU
+# is governed by the pool instead - see the preconditions below. `max_size_gb`
+# is NOT: a pooled database carries its own cap drawn from the pool's shared
+# storage, and ARM accepts it.
 # =============================================================================
 
 data "azapi_client_config" "current" {}
