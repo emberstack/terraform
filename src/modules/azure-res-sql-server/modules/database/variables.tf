@@ -42,8 +42,9 @@ variable "elastic_pool_resource_id" {
     Resource ID of an elastic pool to place this database in. Null makes it a
     standalone database.
 
-    A pooled database draws capacity and storage from the pool, so `sku` and
-    `max_size_gb` must both be null - ARM rejects them alongside a pool.
+    A pooled database draws its capacity from the pool, so `sku` must be null -
+    ARM rejects one sent alongside a pool. `max_size_gb` is unaffected and still
+    caps the individual database.
   EOT
 }
 
@@ -73,7 +74,8 @@ variable "max_size_gb" {
     Max database size, in GB. Converted to the bytes ARM expects, using Azure's
     own binary GB (1024^3) - so `250` sends `268435456000`.
 
-    Must be null for a pooled database; the pool's limit applies instead.
+    Applies to a pooled database too, where it caps this database inside the
+    pool rather than replacing the pool's own limit.
   EOT
 
   validation {

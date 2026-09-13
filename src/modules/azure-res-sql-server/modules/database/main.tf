@@ -55,6 +55,10 @@ locals {
 # `sku` is omitted entirely for a pooled database. ARM derives it from the pool,
 # and sending one alongside `elasticPoolId` is rejected.
 #
+# `maxSizeBytes` is NOT pool-governed in the same way - it caps the individual
+# database inside the pool, and ARM stores it per database. It is sent whether
+# or not the database is pooled.
+#
 # `collation` and `isLedgerOn` cannot be changed after creation. They are sent
 # anyway rather than left out, so a caller who edits one gets an honest ARM
 # error instead of a silently ignored change.
@@ -78,7 +82,7 @@ resource "azapi_resource" "this" {
       isLedgerOn                       = var.ledger_enabled
       licenseType                      = var.license_type
       maintenanceConfigurationId       = var.maintenance_configuration_resource_id
-      maxSizeBytes                     = local.in_elastic_pool ? null : local.max_size_bytes
+      maxSizeBytes                     = local.max_size_bytes
       minCapacity                      = var.min_capacity
       preferredEnclaveType             = var.preferred_enclave_type
       readScale                        = var.read_scale_enabled == null ? null : (var.read_scale_enabled ? "Enabled" : "Disabled")
@@ -120,12 +124,6 @@ resource "azapi_resource" "this" {
       # The inverse: a standalone database has nothing to inherit from.
       condition     = var.elastic_pool_resource_id != null || var.sku != null
       error_message = "sku is required for a standalone database (one with no elastic_pool_resource_id)."
-    }
-
-    precondition {
-      # Storage is a pool-level property for a pooled database.
-      condition     = var.elastic_pool_resource_id == null || var.max_size_gb == null
-      error_message = "max_size_gb must be null for a database in an elastic pool - the pool's own limit applies."
     }
 
     precondition {
