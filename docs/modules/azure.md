@@ -28,6 +28,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
 | [`azure-res-policy-set-definition`](../../src/modules/azure-res-policy-set-definition/) | Policy initiative |
 | [`azure-res-signalrservice-signalr`](../../src/modules/azure-res-signalrservice-signalr/) | SignalR service, with network ACL, private endpoint, diagnostic settings, lock and role assignments |
+| [`azure-res-sql-server`](../../src/modules/azure-res-sql-server/) | Azure SQL logical server, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, auditing, connection policy, firewall and virtual network rules, private endpoint, diagnostic settings, lock and role assignments (+ [`modules/elastic-pool`](#submodule-elastic-pool-and-database), [`modules/database`](#submodule-elastic-pool-and-database)) |
 
 ## Pattern modules
 
@@ -156,6 +157,36 @@ tag themselves (Indexed mode does not evaluate resource groups).
 **`azure-ptn-policy-aegis-shield-protection`** — explicit. Targets resources by ARM ID, one assignment
 per protected resource. Use it when tagging is impractical, or when protection must exist *before* the
 resource does — tag-based policies only evaluate tags that already exist.
+
+## Submodule: elastic-pool and database
+
+[`azure-res-sql-server/modules/elastic-pool`](../../src/modules/azure-res-sql-server/modules/elastic-pool/)
+and
+[`azure-res-sql-server/modules/database`](../../src/modules/azure-res-sql-server/modules/database/)
+
+Both take the server's ARM resource ID as `parent_id`, so either can be managed by a
+configuration that does not own the server. A database takes an `elastic_pool_resource_id`
+to join a pool, and then must leave `sku` and `max_size_gb` null - the pool supplies
+both, and ARM rejects them alongside a pool. Preconditions catch each direction.
+
+Sizes are in GB and converted to the bytes ARM wants. The factor is 1024^3, because
+Azure says "GB" and means GiB - `100` sends `107374182400`.
+
+### Backup retention is the reason to manage a database here
+
+Both retention policies are separate ARM child resources and are easy to leave
+unmanaged. The consequence is asymmetric:
+
+| Policy | Survives dropping the database | Survives deleting the SERVER |
+|---|---|---|
+| `short_term_retention` (PITR) | yes, within the window | **no** |
+| `long_term_retention` (LTR) | yes | **yes**, restorable to another server |
+
+Deleting a logical server deletes its databases and their PITR backups together, and
+neither can be recovered. LTR is the only class that outlives the server, and an
+unconfigured policy reads back as `PT0S` on every field - indistinguishable from having
+none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keeps no
+yearly backup at all.
 
 ## Submodule: vnet-link
 
