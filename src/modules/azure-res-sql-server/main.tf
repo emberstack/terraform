@@ -171,6 +171,11 @@ resource "azapi_resource" "this" {
   # replaced by the configured body on the first apply.
   ignore_casing = true
 
+  # A server created without `administrator_login` still gets an Azure-generated
+  # `CloudSA…` one, and ARM will not accept a null to clear it. Comparing that
+  # against the configured null is a diff no apply can settle.
+  ignore_null_property = true
+
   sensitive_body = local.manage_administrator_password ? {
     properties = {
       administratorLoginPassword = var.administrator_login_password
