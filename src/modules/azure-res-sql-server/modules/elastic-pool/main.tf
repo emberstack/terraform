@@ -14,6 +14,13 @@
 data "azapi_client_config" "current" {}
 
 locals {
+  # ARM stamps `retentionPolicy` onto every log and metric entry it returns,
+  # years after retention moved to the workspace. azapi compares arrays
+  # wholesale rather than per-property, so one entry missing it - or one
+  # category ARM materialised that the config never sent - makes the whole
+  # diagnostic setting diff on every plan, forever.
+  diagnostic_retention_policy = { days = 0, enabled = false }
+
   # ARM takes the storage limit in bytes. Azure calls the unit "GB" throughout
   # the portal and CLI but means GiB, so the factor is 1024^3 - 100 GB is
   # 107374182400 bytes, not 100000000000.
@@ -192,13 +199,27 @@ resource "azapi_resource" "diagnostic_settings" {
       eventHubName                = each.value.event_hub_name
       logAnalyticsDestinationType = each.value.workspace_resource_id == null ? null : each.value.log_analytics_destination_type
       logs = concat(
-        [for category in each.value.log_categories : { category = category, enabled = true }],
-        [for group in each.value.log_groups : { categoryGroup = group, enabled = true }],
+        [for category, enabled in each.value.log_categories : {
+          category        = category
+          categoryGroup   = null
+          enabled         = enabled
+          retentionPolicy = local.diagnostic_retention_policy
+        }],
+        [for group, enabled in each.value.log_groups : {
+          category        = null
+          categoryGroup   = group
+          enabled         = enabled
+          retentionPolicy = local.diagnostic_retention_policy
+        }],
       )
       marketplacePartnerId = each.value.marketplace_partner_resource_id
-      metrics              = [for category in each.value.metric_categories : { category = category, enabled = true }]
-      storageAccountId     = each.value.storage_account_resource_id
-      workspaceId          = each.value.workspace_resource_id
+      metrics = [for category, enabled in each.value.metric_categories : {
+        category        = category
+        enabled         = enabled
+        retentionPolicy = local.diagnostic_retention_policy
+      }]
+      storageAccountId = each.value.storage_account_resource_id
+      workspaceId      = each.value.workspace_resource_id
     }
   }
 }

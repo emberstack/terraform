@@ -487,9 +487,9 @@ variable "role_assignments" {
 variable "diagnostic_settings" {
   type = map(object({
     name                                     = optional(string, null)
-    log_categories                           = optional(set(string), [])
-    log_groups                               = optional(set(string), ["allLogs"])
-    metric_categories                        = optional(set(string), ["AllMetrics"])
+    log_categories                           = optional(map(bool), {})
+    log_groups                               = optional(map(bool), { allLogs = true })
+    metric_categories                        = optional(map(bool), { AllMetrics = true })
     log_analytics_destination_type           = optional(string, "Dedicated")
     workspace_resource_id                    = optional(string, null)
     storage_account_resource_id              = optional(string, null)
@@ -506,6 +506,12 @@ variable "diagnostic_settings" {
     diagnostic setting there as well as `auditing.log_monitoring_enabled` here.
 
     Exactly one destination must be set per entry.
+
+    `log_categories`, `log_groups` and `metric_categories` are maps of name to
+    enabled, and EVERY category the resource has should appear - the disabled
+    ones included. ARM materialises the full set whatever is sent, and azapi
+    compares the resulting arrays wholesale, so naming only the enabled ones
+    leaves the setting diffing on every plan.
   EOT
   nullable    = false
 }
