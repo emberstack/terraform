@@ -19,6 +19,7 @@ lacks. Keep new inputs shaped the AVM way.
 |---|---|
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
+| [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
 | [`azure-res-kubernetesconfiguration-extension`](../../src/modules/azure-res-kubernetesconfiguration-extension/) | Cluster extension on AKS, Arc or AKS hybrid, with management lock and role assignments for the extension's identity |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
@@ -190,6 +191,48 @@ family does not offer — both list what is valid. The vCore lists were measured
 `Microsoft.Sql/locations/<region>/capabilities` in northeurope and westeurope, which
 returned identical values; what varies by region is whether a family is offered at
 all, which only ARM can answer.
+
+## Submodule: agentpool
+
+A managed cluster carries its pools in `properties.agentPoolProfiles`, and ARM also exposes each
+one as a child resource. Both are real, and the split between them is forced rather than chosen.
+
+ARM will not create a cluster with an empty profile list, so one system pool has to be in the
+create body — that is the parent module's `default_node_pool`. But an ARM write is a full replace,
+so a later PUT carrying only that pool would strip every other one. The cluster therefore ignores
+drift on `agentPoolProfiles` entirely, and `modules/agentpool` owns every additional pool as
+`Microsoft.ContainerService/managedClusters/agentPools`.
+
+Two consequences:
+
+- **The system pool is not manageable through the submodule**, and the pools that are do not appear
+  in the cluster's plan. They are separate resources with separate lifecycles.
+- **`count` is sent only when the autoscaler is off.** With it on, the property is omitted rather
+  than ignored — `ignore_null_property` drops the null, so the running size is neither written nor
+  compared and a scaled-out pool is never dragged back. That leaves `node_count` reconcilable in
+  the mode where it means something, instead of inert in both.
+
+Every pool `locks` the cluster. AKS runs one operation per cluster at a time and fails the rest with
+a conflict, so a `for_each` over pools — which Terraform would otherwise apply in parallel — fails
+on all but the first without it.
+
+### Replacing a pool without a capacity gap
+
+`vm_size` is immutable, so changing it replaces the pool — by default destroying it first, which
+takes that capacity to zero until the replacement finishes. `create_before_destroy` inverts the
+order, at the cost of the pool's name: ARM will not hold two pools of the same name on one cluster,
+so the replacement is created as `<name>` plus a four-character suffix and that generated name is
+then held fixed.
+
+Because `create_before_destroy` cannot be set from a variable, the pool is declared twice and the
+two are mutually exclusive on `count`. They share one body. The generated name has to be ignored —
+`uuid()` is re-evaluated every plan — which is why a `terraform_data` keeper carries the logical
+name and makes a change to `name` a replacement again.
+
+Two things this costs, both checked by a validation rather than left to fail at apply: the name in
+`kubectl get nodes` is not the `name` input, and the suffix eats four of the twelve characters a
+pool name is allowed. A Windows pool is capped at six, so there is no room at all and the option is
+rejected there.
 
 ## Submodule: elastic-pool and database
 
