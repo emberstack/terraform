@@ -20,6 +20,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
 | [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
+| [`azure-res-fabric-capacity`](../../src/modules/azure-res-fabric-capacity/) | Microsoft Fabric capacity and role assignments, with capacity administrators reconciled out of band ([why](#fabric-capacity-administrators)) |
 | [`azure-res-kubernetesconfiguration-extension`](../../src/modules/azure-res-kubernetesconfiguration-extension/) | Cluster extension on AKS, Arc or AKS hybrid, with management lock and role assignments for the extension's identity |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
@@ -191,6 +192,41 @@ family does not offer — both list what is valid. The vCore lists were measured
 `Microsoft.Sql/locations/<region>/capabilities` in northeurope and westeurope, which
 returned identical values; what varies by region is whether a family is offered at
 all, which only ARM can answer.
+
+## Fabric capacity administrators
+
+`Microsoft.Fabric/capacities` stores `properties.administration.members` as an unordered
+set. It neither preserves the order it is sent nor returns a stable one a caller could
+reproduce, so any module that compares that path against the response diffs on every
+plan, forever — the apply succeeds, ARM keeps its own order, and the next refresh renders
+the same reorder.
+
+This was measured against two live capacities in different subscriptions. A PATCH
+carrying the members sorted left ARM's ordering untouched in both, and the follow-up plan
+was identical to the one before the apply. Sorting the list first — what
+[`Azure/avm-res-fabric-capacity/azure`](https://registry.terraform.io/modules/Azure/avm-res-fabric-capacity/azure/latest)
+0.1.0 does — does not avoid this; it is what makes it certain, because ARM's order is
+never alphabetical.
+
+`azure-res-fabric-capacity` therefore excludes the path from body comparison with
+`ignore_body_changes` and gives membership its own owner, an `azapi_resource_action`
+holding a PATCH. An action's body comes from configuration and is never refreshed against
+ARM, which is what makes it order-stable where the resource's own body is not: it re-runs
+when the member set changes and stays quiet when it does not.
+
+Two consequences worth knowing:
+
+- **Membership is reconciled on apply, not detected on plan.** A member added to the
+  capacity out of band — through the Fabric portal, say — is not surfaced as drift. The
+  next apply that changes the set overwrites it, because the PATCH sends the configured
+  set whole.
+- **`administration_members` is not the same thing as `role_assignments`.** The first
+  governs who administers the capacity inside Fabric; the second is ARM control-plane
+  RBAC. Granting one does not grant the other.
+
+`azapi_resource_action` is not created, updated or deleted the way a resource is — removing
+the module's members from configuration does not remove them from the capacity, because
+there is no PATCH left to send. Set the desired final set instead.
 
 ## Submodule: agentpool
 
