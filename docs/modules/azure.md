@@ -44,6 +44,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-ptn-network-dnszone-records`](../../src/modules/azure-ptn-network-dnszone-records/) | A, AAAA, CAA, CNAME, MX, NS, PTR, SRV and TXT records in an existing public zone |
 | [`azure-ptn-network-privatednszone-records`](../../src/modules/azure-ptn-network-privatednszone-records/) | A, AAAA, CNAME, MX, PTR, SRV and TXT records in an existing private zone |
 | [`azure-ptn-network-privatednszone-vnet-links`](../../src/modules/azure-ptn-network-privatednszone-vnet-links/) | Virtual network links across many zones |
+| [`azure-ptn-network-routetable-routes`](../../src/modules/azure-ptn-network-routetable-routes/) | Routes in an existing route table, so several configurations can share one table, written one at a time under a per-table lock |
 | [`azure-ptn-network-subnet-networksecuritygroup-associations`](../../src/modules/azure-ptn-network-subnet-networksecuritygroup-associations/) | Network security group associations on existing subnets, across many NSGs |
 | [`azure-ptn-network-virtualnetwork-dnsservers`](../../src/modules/azure-ptn-network-virtualnetwork-dnsservers/) | DNS server list on an existing virtual network |
 | [`azure-ptn-policy-aegis-shield-protection`](../../src/modules/azure-ptn-policy-aegis-shield-protection/) | [Aegis](#aegis) deny-delete by explicit resource ID |
