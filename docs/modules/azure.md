@@ -22,7 +22,9 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
 | [`azure-res-fabric-capacity`](../../src/modules/azure-res-fabric-capacity/) | Microsoft Fabric capacity and role assignments, with capacity administrators reconciled out of band ([why](#fabric-capacity-administrators)) |
 | [`azure-res-kubernetesconfiguration-extension`](../../src/modules/azure-res-kubernetesconfiguration-extension/) | Cluster extension on AKS, Arc or AKS hybrid, with management lock and role assignments for the extension's identity |
+| [`azure-res-network-azurefirewall`](../../src/modules/azure-res-network-azurefirewall/) | Policy-managed Azure Firewall in a virtual network, with data-plane public IPs passed in, an optional management IP configuration and its public IP, diagnostic settings, lock and role assignments — zones kept in ARM's own order |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
+| [`azure-res-network-firewallpolicy`](../../src/modules/azure-res-network-firewallpolicy/) | Azure Firewall policy — tier, threat intelligence, IDPS, DNS proxy, SNAT private ranges and base policy — with lock and role assignments (+ [`modules/rule-collection-group`](#submodule-rule-collection-group)) |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
 | [`azure-res-network-privateendpoint`](../../src/modules/azure-res-network-privateendpoint/) | Standalone private endpoint against a target owned elsewhere, [automatic or manual](#manual-connection-approval), with DNS zone group, management lock and role assignments |
 | [`azure-res-network-routeserver`](../../src/modules/azure-res-network-routeserver/) | Route server (a `virtualHubs` resource with no virtual WAN), with its IP configuration, the public IP it requires, diagnostic settings, lock and role assignments (+ [`modules/bgp-connection`](#submodule-bgp-connection)) |
@@ -44,6 +46,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-ptn-compute-virtualmachine-runcommand`](../../src/modules/azure-ptn-compute-virtualmachine-runcommand/) | One script inside an existing VM as a managed run command, from inline text, a script URI or the commandId of a script Azure ships, with script failure failing the apply, an optional ARM restart, and a not-ready VM agent absorbed by [retry](#agent-readiness) |
 | [`azure-ptn-compute-virtualmachine-windows-fqdn`](../../src/modules/azure-ptn-compute-virtualmachine-windows-fqdn/) | Windows VM in-guest primary DNS suffix, written by a managed run command (so the guest FQDN matches its public DNS name) and applied by an ARM restart the apply blocks on until the VM is running again |
 | [`azure-ptn-network-dnszone-records`](../../src/modules/azure-ptn-network-dnszone-records/) | A, AAAA, CAA, CNAME, MX, NS, PTR, SRV and TXT records in an existing public zone |
+| [`azure-ptn-network-firewallpolicy-rulecollectiongroups`](../../src/modules/azure-ptn-network-firewallpolicy-rulecollectiongroups/) | Rule collection groups on an existing firewall policy from one map, written one at a time under a policy lock — the many-groups counterpart of [`modules/rule-collection-group`](#submodule-rule-collection-group) |
 | [`azure-ptn-network-privatednszone-records`](../../src/modules/azure-ptn-network-privatednszone-records/) | A, AAAA, CNAME, MX, PTR, SRV and TXT records in an existing private zone |
 | [`azure-ptn-network-privatednszone-vnet-links`](../../src/modules/azure-ptn-network-privatednszone-vnet-links/) | Virtual network links across many zones |
 | [`azure-ptn-network-routetable-routes`](../../src/modules/azure-ptn-network-routetable-routes/) | Routes in an existing route table, so several configurations can share one table, written one at a time under a per-table lock |
@@ -320,6 +323,21 @@ neither can be recovered. LTR is the only class that outlives the server, and an
 unconfigured policy reads back as `PT0S` on every field - indistinguishable from having
 none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keeps no
 yearly backup at all.
+
+## Submodule: rule-collection-group
+
+[`azure-res-network-firewallpolicy/modules/rule-collection-group`](../../src/modules/azure-res-network-firewallpolicy/modules/rule-collection-group/)
+creates one rule collection group — its DNAT, network and application rule collections — on an
+existing firewall policy.
+
+It is a submodule rather than an input on the policy because a policy's groups usually have
+different owners: platform rules, per-workload rules, DNAT for one service. ARM keeps a group's
+collections and their rules as named items, and azapi matches them by name, so inserting a
+collection plans as an insertion rather than as every later collection shifting a slot — the churn
+an azurerm group's ordered nested blocks produce.
+
+Every group locks its policy, since ARM rejects concurrent writes to one policy's groups; the lock
+spans one Terraform run, and `retry` covers writes from other configurations.
 
 ## Submodule: vnet-link
 
