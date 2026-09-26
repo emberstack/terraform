@@ -25,6 +25,8 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
 | [`azure-res-network-privateendpoint`](../../src/modules/azure-res-network-privateendpoint/) | Standalone private endpoint against a target owned elsewhere, [automatic or manual](#manual-connection-approval), with DNS zone group, management lock and role assignments |
+| [`azure-res-network-routeserver`](../../src/modules/azure-res-network-routeserver/) | Route server (a `virtualHubs` resource with no virtual WAN), with its IP configuration, the public IP it requires, diagnostic settings, lock and role assignments (+ [`modules/bgp-connection`](#submodule-bgp-connection)) |
+| [`azure-res-network-virtualnetworkgateway`](../../src/modules/azure-res-network-virtualnetworkgateway/) | VPN or ExpressRoute gateway in an existing `GatewaySubnet`, active-standby or active-active, with BGP and custom APIPA peering addresses, diagnostic settings, lock and role assignments — site-to-site only, so point-to-site and NAT rules are not sent |
 | [`azure-res-policy-assignment`](../../src/modules/azure-res-policy-assignment/) | Policy or initiative assignment, [scope-routed](#scope-routing) |
 | [`azure-res-policy-definition`](../../src/modules/azure-res-policy-definition/) | Policy definition |
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
@@ -270,6 +272,18 @@ Two things this costs, both checked by a validation rather than left to fail at 
 `kubectl get nodes` is not the `name` input, and the suffix eats four of the twelve characters a
 pool name is allowed. A Windows pool is capped at six, so there is no room at all and the option is
 rejected there.
+
+## Submodule: bgp-connection
+
+[`azure-res-network-routeserver/modules/bgp-connection`](../../src/modules/azure-res-network-routeserver/modules/bgp-connection/)
+creates one BGP peering between an existing route server and an NVA.
+
+It is a submodule rather than an input on the route server because the two have different owners
+in practice: the hub network owns the route server, while the configuration that deploys an NVA is
+the one that knows its address and ASN. Creating the connection only lets the route server accept
+the session — the NVA still peers with both of the parent's `virtual_router_ips`.
+
+A `ReadOnly` lock on the route server blocks writes to its children, this one included.
 
 ## Submodule: elastic-pool and database
 
