@@ -1,10 +1,21 @@
 output "application" {
-  description = "The application registration: `id` (the provider's resource ID, `/applications/<object_id>`), `object_id`, `client_id` and `display_name`."
+  description = <<-EOT
+    The application registration: `id` (the provider's resource ID,
+    `/applications/<object_id>`), `object_id`, `client_id` and `display_name`,
+    plus the URLs registered on it — `identifier_uris` and `redirect_uris` as
+    sorted lists, and the web `logout_url`. A SAML service provider's own
+    configuration needs the same URLs; reading them here keeps the two sides
+    from drifting apart.
+  EOT
+
   value = {
-    id           = azuread_application.this.id
-    object_id    = azuread_application.this.object_id
-    client_id    = azuread_application.this.client_id
-    display_name = azuread_application.this.display_name
+    id              = azuread_application.this.id
+    object_id       = azuread_application.this.object_id
+    client_id       = azuread_application.this.client_id
+    display_name    = azuread_application.this.display_name
+    identifier_uris = sort(azuread_application.this.identifier_uris)
+    redirect_uris   = sort(try(one(azuread_application.this.web).redirect_uris, []))
+    logout_url      = try(one(azuread_application.this.web).logout_url, null)
   }
 }
 
@@ -32,6 +43,7 @@ output "saml" {
     - `login_url` / `logout_url` — the tenant's SAML endpoints.
     - `entity_id` — the identity provider's entity ID (issuer).
     - `certificate` — the signing certificate's `thumbprint` and `end_date`.
+      The certificate itself is in `saml_certificate_value`.
   EOT
 
   value = var.service_principal.saml != null ? {
@@ -44,6 +56,21 @@ output "saml" {
       end_date   = azuread_service_principal_token_signing_certificate.this[0].end_date
     }
   } : null
+}
+
+output "saml_certificate_value" {
+  description = <<-EOT
+    The SAML signing certificate, PEM-encoded without the header and footer
+    lines, for a service provider that imports the certificate instead of
+    reading federation metadata. Null when `service_principal.saml` is unset.
+
+    It is the public certificate. It is sensitive only because the provider
+    marks the attribute so, and it is kept out of `saml` so that output stays
+    readable in plans.
+  EOT
+
+  sensitive = true
+  value     = var.service_principal.saml != null ? azuread_service_principal_token_signing_certificate.this[0].value : null
 }
 
 output "password" {

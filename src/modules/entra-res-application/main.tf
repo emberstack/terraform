@@ -4,7 +4,8 @@
 # An application registration and, by default, its service principal, plus the
 # pieces that only mean something alongside them: a client secret, a claims
 # mapping policy, a SAML token-signing certificate, and user and group
-# assignments.
+# assignments. The application is either custom or instantiated from an Entra
+# gallery template.
 #
 # Owners and user assignments can be passed as either Entra object IDs (UUIDs)
 # or user principal names (UPNs). Auto-routed by format: UUID values are used
@@ -49,17 +50,20 @@ data "azuread_user" "owners" {
 # -----------------------------------------------------------------------------
 
 resource "azuread_application" "this" {
-  display_name     = var.display_name
-  description      = var.description
-  sign_in_audience = var.sign_in_audience
-  owners           = local.application_owners
-  tags             = var.tags
-  identifier_uris  = var.identifier_uris
+  display_name            = var.display_name
+  description             = var.description
+  sign_in_audience        = var.sign_in_audience
+  template_id             = var.template_id
+  owners                  = local.application_owners
+  tags                    = var.tags
+  identifier_uris         = var.identifier_uris
+  group_membership_claims = var.group_membership_claims
 
   dynamic "web" {
     for_each = var.web == null ? [] : [var.web]
     content {
       redirect_uris = web.value.redirect_uris
+      homepage_url  = web.value.homepage_url
       logout_url    = web.value.logout_url
 
       dynamic "implicit_grant" {
@@ -94,6 +98,53 @@ resource "azuread_application" "this" {
       requested_access_token_version = api.value.requested_access_token_version
     }
   }
+
+  dynamic "app_role" {
+    for_each = var.app_roles
+    content {
+      id                   = app_role.value.id
+      display_name         = app_role.value.display_name
+      description          = app_role.value.description
+      allowed_member_types = app_role.value.allowed_member_types
+      value                = app_role.value.value
+      enabled              = app_role.value.enabled
+    }
+  }
+
+  dynamic "optional_claims" {
+    for_each = var.optional_claims == null ? [] : [var.optional_claims]
+    content {
+      dynamic "access_token" {
+        for_each = optional_claims.value.access_token
+        content {
+          name                  = access_token.value.name
+          source                = access_token.value.source
+          essential             = access_token.value.essential
+          additional_properties = access_token.value.additional_properties
+        }
+      }
+
+      dynamic "id_token" {
+        for_each = optional_claims.value.id_token
+        content {
+          name                  = id_token.value.name
+          source                = id_token.value.source
+          essential             = id_token.value.essential
+          additional_properties = id_token.value.additional_properties
+        }
+      }
+
+      dynamic "saml2_token" {
+        for_each = optional_claims.value.saml2_token
+        content {
+          name                  = saml2_token.value.name
+          source                = saml2_token.value.source
+          essential             = saml2_token.value.essential
+          additional_properties = saml2_token.value.additional_properties
+        }
+      }
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -118,6 +169,12 @@ resource "azuread_service_principal" "this" {
   client_id                    = azuread_application.this.client_id
   app_role_assignment_required = var.service_principal.app_role_assignment_required
   owners                       = local.service_principal_owners
+
+  # Instantiating a gallery template creates the service principal alongside
+  # the application, so this resource adopts it rather than failing on a
+  # duplicate. Null rather than false for a custom application, so a module
+  # upgrade does not show a no-op diff on every existing service principal.
+  use_existing = var.template_id != null ? true : null
 
   # tags and feature_tags are mutually exclusive in the provider.
   tags = var.service_principal.feature_tags != null ? null : var.service_principal.tags
@@ -185,8 +242,9 @@ resource "azuread_service_principal_claims_mapping_policy_assignment" "this" {
 # -----------------------------------------------------------------------------
 # Assignments
 # -----------------------------------------------------------------------------
-# Every assignment uses Default Access, the implicit role of an app that
-# defines no app roles of its own.
+# Every assignment grants the same role, `assignment_app_role_id`. Its default
+# is Default Access, the implicit role of an app that defines no app roles of
+# its own.
 #
 # `for_each` is keyed on the input map itself, NOT on a regex-filtered copy of
 # it, and the UUID-vs-UPN decision happens per entry in the body. The lookup
@@ -203,7 +261,7 @@ data "azuread_user" "assignments" {
 resource "azuread_app_role_assignment" "users" {
   for_each = var.user_assignments
 
-  app_role_id = "00000000-0000-0000-0000-000000000000"
+  app_role_id = var.assignment_app_role_id
   principal_object_id = (
     can(regex(local.uuid_pattern, each.value))
     ? each.value
@@ -215,7 +273,7 @@ resource "azuread_app_role_assignment" "users" {
 resource "azuread_app_role_assignment" "groups" {
   for_each = var.group_assignments
 
-  app_role_id         = "00000000-0000-0000-0000-000000000000"
+  app_role_id         = var.assignment_app_role_id
   principal_object_id = each.value
   resource_object_id  = azuread_service_principal.this[0].object_id
 }

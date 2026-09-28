@@ -34,6 +34,33 @@ variable "sign_in_audience" {
   }
 }
 
+variable "template_id" {
+  description = <<-EOT
+    ID of the Entra application gallery template to instantiate the
+    application from. Leave null for a custom (non-gallery) application. Look
+    an ID up by name with the `azuread_application_template` data source.
+
+    Instantiating a template creates the service principal too, so the module
+    adopts that one instead of creating another — `service_principal.enabled`
+    must stay true.
+
+    Changing it replaces the application, which means a new client ID.
+  EOT
+
+  type    = string
+  default = null
+
+  validation {
+    condition     = var.template_id == null || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.template_id))
+    error_message = "template_id must be a UUID."
+  }
+
+  validation {
+    condition     = var.template_id == null || var.service_principal.enabled
+    error_message = "template_id requires service_principal.enabled — instantiating a template always creates a service principal, which the module adopts."
+  }
+}
+
 variable "tags" {
   description = "Tags applied to the application. Free-form strings, not key/value pairs."
   type        = set(string)
@@ -97,6 +124,7 @@ variable "web" {
 
     - `redirect_uris` — each must be an `http(s)` URL or a URN, and must match
       what the client sends byte for byte.
+    - `homepage_url` — home page or landing page of the application.
     - `logout_url` — front-channel logout URL.
     - `implicit_grant` — let the authorize endpoint return an ID token and/or
       access token directly. Only for clients that use the implicit or hybrid
@@ -105,6 +133,7 @@ variable "web" {
 
   type = object({
     redirect_uris = optional(set(string), [])
+    homepage_url  = optional(string)
     logout_url    = optional(string)
     implicit_grant = optional(object({
       id_token_issuance_enabled     = optional(bool, false)
@@ -218,6 +247,130 @@ variable "api_permissions" {
       length(flatten([for p in var.api_permissions : p.resource_access])) <= 400
     )
     error_message = "api_permissions is limited to 50 resource applications and 400 permissions in total."
+  }
+}
+
+variable "group_membership_claims" {
+  description = "Group memberships Entra emits in the `groups` claim of issued tokens. Any of: None, SecurityGroup, DirectoryRole, ApplicationGroup, All. Empty leaves the claim out."
+  type        = set(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition = alltrue([
+      for v in var.group_membership_claims :
+      contains(["None", "SecurityGroup", "DirectoryRole", "ApplicationGroup", "All"], v)
+    ])
+    error_message = "Each group_membership_claims entry must be one of: None, SecurityGroup, DirectoryRole, ApplicationGroup, All."
+  }
+}
+
+variable "optional_claims" {
+  description = <<-EOT
+    Optional claims to add to issued tokens, listed per token type:
+    `access_token`, `id_token` and `saml2_token`. Each claim takes:
+
+    - `name` — the optional claim, e.g. `groups`; with `source = "user"`, the
+      name of the user-object extension property.
+    - `source` — null for a predefined optional claim, `user` for an extension
+      property.
+    - `essential` — whether the client needs the claim for a smooth sign-in.
+    - `additional_properties` — modifiers for the claim, e.g. `emit_as_roles`
+      or `sam_account_name`.
+  EOT
+
+  type = object({
+    access_token = optional(list(object({
+      name                  = string
+      source                = optional(string)
+      essential             = optional(bool, false)
+      additional_properties = optional(list(string), [])
+    })), [])
+    id_token = optional(list(object({
+      name                  = string
+      source                = optional(string)
+      essential             = optional(bool, false)
+      additional_properties = optional(list(string), [])
+    })), [])
+    saml2_token = optional(list(object({
+      name                  = string
+      source                = optional(string)
+      essential             = optional(bool, false)
+      additional_properties = optional(list(string), [])
+    })), [])
+  })
+  default = null
+
+  validation {
+    condition = var.optional_claims == null || alltrue([
+      for c in concat(var.optional_claims.access_token, var.optional_claims.id_token, var.optional_claims.saml2_token) :
+      length(c.name) > 0 && (c.source == null || c.source == "user")
+    ])
+    error_message = "Each optional claim needs a name, and a source that is either null or \"user\"."
+  }
+
+  validation {
+    condition = var.optional_claims == null || alltrue(flatten([
+      for c in concat(var.optional_claims.access_token, var.optional_claims.id_token, var.optional_claims.saml2_token) : [
+        for p in c.additional_properties : contains([
+          "cloud_displayname", "dns_domain_and_sam_account_name", "emit_as_roles",
+          "include_externally_authenticated_upn_without_hash", "include_externally_authenticated_upn",
+          "max_size_limit", "netbios_domain_and_sam_account_name", "on_premise_security_identifier",
+          "sam_account_name", "use_guid",
+        ], p)
+      ]
+    ]))
+    error_message = "Each optional claim additional_properties entry must be one of: cloud_displayname, dns_domain_and_sam_account_name, emit_as_roles, include_externally_authenticated_upn_without_hash, include_externally_authenticated_upn, max_size_limit, netbios_domain_and_sam_account_name, on_premise_security_identifier, sam_account_name, use_guid."
+  }
+}
+
+variable "app_roles" {
+  description = <<-EOT
+    App roles the application defines, keyed by a stable name.
+
+    - `id` — UUID, unique within the application. Generate it once and keep
+      it: assignments reference the role by ID.
+    - `display_name` / `description` — shown during assignment and consent.
+    - `allowed_member_types` — `User` (users and groups), `Application`, or
+      both.
+    - `value` — what the `roles` claim carries; null for a role that only
+      gates access.
+    - `enabled` — defaults to true.
+
+    To grant one of these roles through `user_assignments` and
+    `group_assignments`, set `assignment_app_role_id` to its `id`.
+  EOT
+
+  type = map(object({
+    id                   = string
+    display_name         = string
+    description          = string
+    allowed_member_types = set(string)
+    value                = optional(string)
+    enabled              = optional(bool, true)
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for r in values(var.app_roles) :
+      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", r.id))
+    ])
+    error_message = "Each app_roles[*].id must be a UUID."
+  }
+
+  validation {
+    condition     = length(distinct([for r in values(var.app_roles) : lower(r.id)])) == length(var.app_roles)
+    error_message = "app_roles ids must be unique."
+  }
+
+  validation {
+    condition = alltrue([
+      for r in values(var.app_roles) :
+      length(r.allowed_member_types) > 0 && alltrue([for t in r.allowed_member_types : contains(["User", "Application"], t)])
+    ])
+    error_message = "Each app_roles[*].allowed_member_types must be a non-empty set of User and/or Application."
   }
 }
 
@@ -372,6 +525,29 @@ variable "service_principal" {
       can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", v))
     ])
     error_message = "Each value in service_principal.owners must be either a valid Entra object ID (UUID) or a user principal name (UPN, e.g. user@example.com)."
+  }
+}
+
+variable "assignment_app_role_id" {
+  description = <<-EOT
+    App role granted by every entry in `user_assignments` and
+    `group_assignments`.
+
+    Defaults to Default Access (`00000000-0000-0000-0000-000000000000`), the
+    role Graph accepts when an application declares no app roles of its own.
+    For an application that does, set it to the `id` of one of `app_roles`, or
+    of a role its gallery template defines.
+
+    Changing it re-creates every assignment.
+  EOT
+
+  type     = string
+  default  = "00000000-0000-0000-0000-000000000000"
+  nullable = false
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.assignment_app_role_id))
+    error_message = "assignment_app_role_id must be a UUID."
   }
 }
 
