@@ -8,6 +8,7 @@ Modules on the `hashicorp/azuread` provider.
 |---|---|
 | [`entra-res-group`](../../src/modules/entra-res-group/) | Group, its owners, and optional atomic placement into an administrative unit (+ [`modules/member`](#member-submodules)) |
 | [`entra-res-administrativeunit`](../../src/modules/entra-res-administrativeunit/) | Administrative unit and AU-scoped directory role assignments (+ [`modules/member`](#member-submodules)) |
+| [`entra-res-application`](../../src/modules/entra-res-application/) | Application registration and its service principal, with optional client secret, claims mapping policy, SAML single sign-on and user/group assignments |
 | [`entra-ptn-group-collection`](../../src/modules/entra-ptn-group-collection/) | Many groups from one map — delegates to `entra-res-group` |
 | [`entra-ptn-group-memberships`](../../src/modules/entra-ptn-group-memberships/) | Arbitrary (group, principal) pairs, for membership managed independently of any group |
 | [`entra-ptn-pim-group`](../../src/modules/entra-ptn-pim-group/) | Brings an existing group under PIM — role management policies, eligibility and active assignment schedules |
@@ -17,9 +18,11 @@ Modules on the `hashicorp/azuread` provider.
 
 ## Principals: object ID or UPN
 
-Everywhere a principal is named — owners, members — the input is a `map(string)` that accepts
-**either** an Entra object ID (UUID) **or** a user principal name. The value is partitioned by regex:
-UUIDs are used directly, UPNs are resolved through an `azuread_user` data source at plan time.
+Everywhere a principal is named — owners, members, application user assignments — the input is a
+`map(string)` that accepts **either** an Entra object ID (UUID) **or** a user principal name. The
+value is partitioned by regex: UUIDs are used directly, UPNs are resolved through an `azuread_user`
+data source at plan time. Inputs that can only hold groups, such as `entra-res-application`'s
+`group_assignments`, take object IDs alone — a group has no UPN to look up.
 
 ```hcl
 owners = {
