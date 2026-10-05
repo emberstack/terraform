@@ -391,7 +391,7 @@ jobs:
       # whose breaking-change rules must stay in step with GitVersion.yaml.
       - name: Generate release notes
         if: steps.guard.outputs.skip != 'true'
-        uses: orhun/git-cliff-action@v4.8.0
+        uses: orhun/git-cliff-action@v4.9.1
         with:
           config: cliff.toml
           args: --unreleased --tag ${{ needs.discovery.outputs.tag }} --strip header
