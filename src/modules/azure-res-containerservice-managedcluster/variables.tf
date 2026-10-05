@@ -141,17 +141,30 @@ variable "kubernetes_version" {
   type        = string
   default     = null
   description = <<-EOT
-    Kubernetes version, as `<major>.<minor>` to track the latest patch, or a full
-    `<major>.<minor>.<patch>` to pin one. Null leaves the version to Azure.
+    Kubernetes version the cluster is created with, as `<major>.<minor>` for the
+    latest patch of that minor, or a full `<major>.<minor>.<patch>`. Null leaves
+    the version to Azure.
 
-    Written by a separate ARM call rather than the create body, because the
-    cluster resource ignores drift on `kubernetesVersion` — see `main.tf`.
+    What happens after creation depends on `auto_upgrade_profile.upgrade_channel`:
 
-    A full three-part pin only works with an upgrade channel that cannot move
-    the version. `stable`, `rapid` and `patch` all can: once Azure has upgraded
-    the cluster past the pin, that separate call tries to write the old version
-    back, AKS rejects the downgrade, and every apply fails from then on. Use
-    `<major>.<minor>` with a live channel and let Azure carry the patch.
+    - `stable`, `rapid` — this is the create version only. The channel moves the
+      version, minor included, and the module never writes this input again, so
+      changing it does nothing to an existing cluster. Read the version the
+      cluster actually runs from the `current_kubernetes_version` output.
+    - `none`, `node-image`, `patch` — the module keeps applying it, through a
+      separate ARM call rather than the create body (see `main.tf`). Raising it
+      is how a minor upgrade is made. With `patch`, Azure records the full patch
+      version after each automatic upgrade, so the next plan shows it changing
+      back to `<major>.<minor>`; applying that asks for the latest patch of the
+      minor.
+
+    A full three-part version cannot be combined with `patch`: once the channel
+    patches past it, applying it is a downgrade, which AKS rejects, and every
+    apply fails from then on. Use `<major>.<minor>` with `patch`.
+
+    Switching an existing cluster from `stable` or `rapid` to another channel
+    makes the module apply this input again — set it to the running version
+    first, or the first apply asks for whatever version it still names.
   EOT
 
   validation {
@@ -163,9 +176,9 @@ variable "kubernetes_version" {
     condition = (
       var.kubernetes_version == null ||
       !can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.kubernetes_version)) ||
-      contains(["none", "node-image"], var.auto_upgrade_profile.upgrade_channel)
+      var.auto_upgrade_profile.upgrade_channel != "patch"
     )
-    error_message = "A three-part kubernetes_version pin requires auto_upgrade_profile.upgrade_channel to be \"none\" or \"node-image\" — any other channel moves the version and the next apply fails trying to downgrade it. Pin \"<major>.<minor>\" instead to track patches."
+    error_message = "A three-part kubernetes_version cannot be combined with auto_upgrade_profile.upgrade_channel = \"patch\" — the channel patches past it and the next apply fails trying to downgrade it. Use \"<major>.<minor>\" with \"patch\"."
   }
 }
 
@@ -228,9 +241,11 @@ variable "auto_upgrade_profile" {
     Automatic upgrade channels.
 
     `upgrade_channel` moves the control plane and pools between Kubernetes
-    versions; `node_os_upgrade_channel` handles node OS images only. An upgrade
-    channel other than `none` moves `kubernetesVersion` out from under Terraform,
-    which is why the cluster ignores drift on it.
+    versions; `node_os_upgrade_channel` handles node OS images only. `patch`,
+    `stable` and `rapid` move `kubernetesVersion` out from under Terraform, which
+    is why the cluster ignores drift on it. `stable` and `rapid` also move the
+    minor version, so with either one `kubernetes_version` is only the version
+    the cluster is created with.
   EOT
   nullable    = false
 

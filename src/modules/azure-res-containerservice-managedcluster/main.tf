@@ -14,10 +14,14 @@
 #                      The cluster autoscaler moves `count` as well, which nothing
 #                      in Terraform should be arguing with.
 #
-#   kubernetesVersion  An upgrade channel other than `none` moves it server-side.
-#                      Reconciling it here would drag the cluster back to the
-#                      configured version on the next apply — so the input is
-#                      applied by a separate, serialised call instead.
+#   kubernetesVersion  The `patch`, `stable` and `rapid` upgrade channels move it
+#                      server-side. Reconciling it here would drag the cluster
+#                      back to the configured version on the next apply — so
+#                      where Terraform still owns the version (`none`,
+#                      `node-image`, `patch`) the input is applied by a
+#                      separate, serialised call instead. `stable` and `rapid`
+#                      move the minor version too, so under those the input is
+#                      the create version only and is never written again.
 #
 # There are no `replace_triggers_refs`. Several properties are genuinely
 # create-only, but on a managed cluster a plan-time "replace" is the deletion of
@@ -57,6 +61,14 @@ locals {
   # enforces — so this is a two-way choice rather than the four-way one the
   # generic AVM identity interface models.
   identity_type = var.managed_identities.system_assigned ? "SystemAssigned" : "UserAssigned"
+
+  # `stable` and `rapid` move the minor version on their own, so under either
+  # one `kubernetes_version` is only the version the cluster is created with.
+  # Writing it back afterwards would at best re-assert a patch the channel has
+  # already moved past, and once the channel crosses a minor it asks AKS for a
+  # downgrade, which AKS rejects — failing every apply until the input is bumped
+  # by hand.
+  kubernetes_version_create_only = contains(["stable", "rapid"], var.auto_upgrade_profile.upgrade_channel)
 }
 
 locals {
@@ -364,10 +376,14 @@ resource "azapi_resource" "this" {
 }
 
 # `kubernetesVersion` is ignored on the cluster above, so the input is applied
-# here instead. `locks` serialises it against anything else writing to the same
-# cluster — an upgrade is a long call, and a concurrent PUT during one fails.
+# here instead — except under `stable` and `rapid`, where it is the create
+# version only (`local.kubernetes_version_create_only`). On a cluster that
+# already has this resource, that plans as a destroy, which AzAPI performs as a
+# no-op: the cluster keeps the version it runs. `locks` serialises it against
+# anything else writing to the same cluster — an upgrade is a long call, and a
+# concurrent PUT during one fails.
 resource "azapi_update_resource" "kubernetes_version" {
-  count = var.kubernetes_version == null ? 0 : 1
+  count = var.kubernetes_version == null || local.kubernetes_version_create_only ? 0 : 1
 
   type        = local.api_version
   resource_id = azapi_resource.this.id
