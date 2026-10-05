@@ -177,6 +177,13 @@ address respectively. All three are kept in sync.
 | [`fortios-res-fortigate-dnsfilter-profile`](../../src/modules/fortios-res-fortigate-dnsfilter-profile/) | DNS filter profile |
 | [`fortios-res-fortigate-dnsfilter-domain-filter`](../../src/modules/fortios-res-fortigate-dnsfilter-domain-filter/) | Domain filter list |
 
+### Logging
+
+| Module | What it manages |
+|---|---|
+| [`fortios-res-fortigate-log-setting`](../../src/modules/fortios-res-fortigate-log-setting/) | Global log settings: implicit and local-in logging, log content, REST API audit |
+| [`fortios-res-fortigate-logdisk-setting`](../../src/modules/fortios-res-fortigate-logdisk-setting/) | Local disk logging, rolling, retention and full-disk thresholds |
+
 ### Routing and SD-WAN
 
 | Module | What it manages |
@@ -184,6 +191,13 @@ address respectively. All three are kept in sync.
 | [`fortios-res-fortigate-router-static`](../../src/modules/fortios-res-fortigate-router-static/) | Static route |
 | [`fortios-ptn-fortigate-router-static-collection`](../../src/modules/fortios-ptn-fortigate-router-static-collection/) | Static routes from one map |
 | [`fortios-res-fortigate-system-sdwan`](../../src/modules/fortios-res-fortigate-system-sdwan/) | SD-WAN zones, members, health checks and rules |
+
+### IPsec VPN
+
+| Module | What it manages |
+|---|---|
+| [`fortios-res-fortigate-vpnipsec-phase1interface`](../../src/modules/fortios-res-fortigate-vpnipsec-phase1interface/) | Route-based IPsec gateway (site-to-site or dial-up with mode-cfg) |
+| [`fortios-res-fortigate-vpnipsec-phase2interface`](../../src/modules/fortios-res-fortigate-vpnipsec-phase2interface/) | Phase2 selector on a phase1 interface |
 
 ### Switch controller
 
@@ -199,9 +213,11 @@ address respectively. All three are kept in sync.
 |---|---|
 | [`fortios-res-fortigate-system-interface`](../../src/modules/fortios-res-fortigate-system-interface/) | Network interface |
 | [`fortios-res-fortigate-systemdhcp-server`](../../src/modules/fortios-res-fortigate-systemdhcp-server/) | DHCP server on an interface |
+| [`fortios-res-fortigate-system-acme`](../../src/modules/fortios-res-fortigate-system-acme/) | ACME client listening interfaces — the CA account is left to FortiOS |
 | [`fortios-res-fortigate-system-automationstitch`](../../src/modules/fortios-res-fortigate-system-automationstitch/) | Automation stitch |
 | [`fortios-res-fortigate-system-external-resource`](../../src/modules/fortios-res-fortigate-system-external-resource/) | External threat/address feed |
 | [`fortios-res-fortigate-vpncertificate-remote`](../../src/modules/fortios-res-fortigate-vpncertificate-remote/) | Remote certificate |
+| [`fortios-res-fortigate-vpncertificate-local`](../../src/modules/fortios-res-fortigate-vpncertificate-local/) | Local certificate enrolled through ACME |
 | [`fortios-ptn-fortigate-system-interface`](../../src/modules/fortios-ptn-fortigate-system-interface/) | Interface with its DHCP server, DNS service and matching firewall address objects — [optional NTP listener via REST](#fortios-ptn-fortigate-system-interface) |
 | [`fortios-ptn-fortigate-system-settings`](../../src/modules/fortios-ptn-fortigate-system-settings/) | Global, NTP and VDOM settings together |
 | [`fortios-ptn-fortigate-system-ntp-interface`](../../src/modules/fortios-ptn-fortigate-system-ntp-interface/) | [Single NTP listener interface via REST](#fortios-ptn-fortigate-system-ntp-interface) |
@@ -213,6 +229,8 @@ address respectively. All three are kept in sync.
 |---|---|
 | [`fortios-res-fortigate-user-setting`](../../src/modules/fortios-res-fortigate-user-setting/) | Global user authentication settings |
 | [`fortios-res-fortigate-user-saml`](../../src/modules/fortios-res-fortigate-user-saml/) | SAML identity provider |
+| [`fortios-res-fortigate-user-group`](../../src/modules/fortios-res-fortigate-user-group/) | User group with members and remote-server group matches |
+| [`fortios-res-fortigate-system-saml`](../../src/modules/fortios-res-fortigate-system-saml/) | Administrator SAML SSO, with the FortiGate as service provider |
 | [`fortios-res-fortigate-user-nacpolicy`](../../src/modules/fortios-res-fortigate-user-nacpolicy/) | NAC policy |
 
 ### Wireless controller

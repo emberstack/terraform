@@ -103,6 +103,22 @@ variable "remoteauthtimeout" {
   default     = null
 }
 
+# --- Logging ---
+
+# Optional but not computed in the provider, yet read back on every refresh.
+# FortiOS 8.0 stores 75 by default, so `null` there shows `75 -> null` on every
+# plan and applying it only makes FortiOS restore 75.
+variable "log_daemon_cpu_threshold" {
+  description = "CPU usage percentage (50-99) at which the syslog daemon spawns another child process. On FortiOS 8.0, set it — normally to the default `75` — because `null` diffs on every plan there. Leave `null` on versions that do not have the setting."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.log_daemon_cpu_threshold == null || (var.log_daemon_cpu_threshold >= 50 && var.log_daemon_cpu_threshold <= 99)
+    error_message = "log_daemon_cpu_threshold must be between 50 and 99."
+  }
+}
+
 # --- system_settings: nullable fields → only managed when passed ---
 
 variable "system_settings" {

@@ -6,12 +6,14 @@ variable "routes" {
     re-address the others.
 
     Per-entry fields:
-      - `seq_num`    — route sequence number (mkey). Omit to let FortiOS assign the next free one.
+      - `seq_num`    — route sequence number (mkey). Set it: omitted, FortiOS assigns the next free one but fortios 1.26.x reads the route back as seq 0 and fails the create.
       - `dst`        — destination subnet, e.g. `10.0.0.0 255.255.255.0`. Mutually exclusive with `dstaddr`.
       - `dstaddr`    — name of an existing firewall address/address-group used as the destination
                        instead of `dst`.
       - `gateway`    — next-hop IP address. Omit for interface-only (directly connected) routes.
       - `device`     — egress interface name.
+      - `blackhole`  — `enable` drops matching traffic instead of forwarding it; leave `device` empty and
+                       `gateway` unset. Omit to leave it unmanaged (FortiOS defaults to `disable`).
       - `distance`   — administrative distance used to choose between routes to the same destination
                        (lower wins).
       - `priority`   — route priority used to break ties between routes of equal distance (lower wins).
@@ -27,6 +29,7 @@ variable "routes" {
     dstaddr    = optional(string)
     gateway    = optional(string)
     device     = optional(string)
+    blackhole  = optional(string)
     distance   = optional(number)
     priority   = optional(number)
     status     = optional(string)
@@ -34,4 +37,9 @@ variable "routes" {
     comment    = optional(string)
   }))
   default = {}
+
+  validation {
+    condition     = alltrue([for route in values(var.routes) : route.blackhole == null || contains(["enable", "disable"], route.blackhole)])
+    error_message = "Each routes[].blackhole must be enable or disable."
+  }
 }

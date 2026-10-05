@@ -1,5 +1,5 @@
 variable "seq_num" {
-  description = "Static route sequence number (the route's mkey). Leave `null` to let FortiOS assign the next free slot; set it explicitly to pin the route to a stable table entry."
+  description = "Static route sequence number (the route's mkey). Set it explicitly: with `null`, FortiOS assigns the next free slot, but fortios 1.26.x then reads the new route back as seq 0, fails the create and taints a route that does exist on the device."
   type        = number
   default     = null
 }
@@ -26,6 +26,17 @@ variable "device" {
   description = "Outgoing interface name for the route (e.g. `wan1`, `port1`). Leave empty when the route is steered by `sdwan_zone` instead of a specific interface."
   type        = string
   default     = ""
+}
+
+variable "blackhole" {
+  description = "Drop traffic matching the route instead of forwarding it: `enable` or `disable`. With `enable`, leave `device` empty and `gateway` at `0.0.0.0`. `null` leaves it unmanaged; FortiOS defaults to `disable`."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.blackhole == null || contains(["enable", "disable"], var.blackhole)
+    error_message = "blackhole must be enable or disable."
+  }
 }
 
 variable "sdwan_zone" {

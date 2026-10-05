@@ -18,6 +18,8 @@ resource "fortios_system_global" "this" {
   scim_server_cert   = var.scim_server_cert
   auth_ike_saml_port = var.auth_ike_saml_port
   remoteauthtimeout  = var.remoteauthtimeout
+
+  log_daemon_cpu_threshold = var.log_daemon_cpu_threshold
 }
 
 resource "fortios_system_settings" "this" {
