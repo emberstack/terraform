@@ -162,6 +162,8 @@ address respectively. All three are kept in sync.
 | Module | What it manages |
 |---|---|
 | [`fortios-res-fortigate-firewall-policy`](../../src/modules/fortios-res-fortigate-firewall-policy/) | Firewall policy rule |
+| [`fortios-res-fortigate-firewall-ippool`](../../src/modules/fortios-res-fortigate-firewall-ippool/) | Source-NAT IP pool, used by a policy's `poolname` |
+| [`fortios-res-fortigate-firewall-vip`](../../src/modules/fortios-res-fortigate-firewall-vip/) | Virtual IP: destination NAT, optionally per port |
 | [`fortios-res-fortigate-firewall-service`](../../src/modules/fortios-res-fortigate-firewall-service/) | Custom firewall service |
 | [`fortios-res-fortigate-firewallschedule-recurring`](../../src/modules/fortios-res-fortigate-firewallschedule-recurring/) | Recurring schedule |
 | [`fortios-ptn-fortigate-firewall-address-collection`](../../src/modules/fortios-ptn-fortigate-firewall-address-collection/) | Addresses and address groups from one map |

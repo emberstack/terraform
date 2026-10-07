@@ -61,6 +61,29 @@ variable "nat" {
   default     = "disable"
 }
 
+variable "ippool" {
+  description = "Source-NAT to the IP pools in `poolname` instead of the egress interface address. `enable` or `disable`; only meaningful with `nat = \"enable\"`. `null` leaves it unmanaged."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.ippool == null || contains(["enable", "disable"], var.ippool)
+    error_message = "ippool must be enable or disable."
+  }
+}
+
+variable "poolname" {
+  description = "Names of the firewall IP pools to source-NAT into; see `fortios-res-fortigate-firewall-ippool`. Each entry becomes one `poolname` block. Needs `ippool = \"enable\"`."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = length(var.poolname) == 0 || var.ippool == "enable"
+    error_message = "poolname needs ippool = \"enable\"."
+  }
+}
+
 variable "status" {
   description = "Whether the policy is active. One of `enable` or `disable`; `disable` keeps the policy defined but skips it during matching."
   type        = string

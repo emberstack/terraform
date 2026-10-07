@@ -4,6 +4,7 @@ resource "fortios_firewall_policy" "this" {
   action           = var.action
   schedule         = var.schedule
   nat              = var.nat
+  ippool           = var.ippool
   status           = var.status
   logtraffic       = var.logtraffic
   logtraffic_start = var.logtraffic_start
@@ -42,6 +43,13 @@ resource "fortios_firewall_policy" "this" {
     for_each = var.service
     content {
       name = service.value
+    }
+  }
+
+  dynamic "poolname" {
+    for_each = var.poolname
+    content {
+      name = poolname.value
     }
   }
 
