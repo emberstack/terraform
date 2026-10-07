@@ -5,8 +5,8 @@
 # optionally per port. Policies reference it by name as a destination address.
 # FortiOS refuses to delete a VIP that a policy still references.
 #
-# Inputs left `null` are not sent and stay unmanaged. `mappedip` is the
-# complete list.
+# Inputs left `null` are not sent and stay unmanaged. `mappedip` and `service`
+# are complete lists.
 # =============================================================================
 
 resource "fortios_firewall_vip" "this" {
@@ -26,6 +26,13 @@ resource "fortios_firewall_vip" "this" {
     for_each = var.mappedip
     content {
       range = mappedip.value
+    }
+  }
+
+  dynamic "service" {
+    for_each = toset(var.service)
+    content {
+      name = service.value
     }
   }
 }

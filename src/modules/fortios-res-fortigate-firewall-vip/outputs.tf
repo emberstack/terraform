@@ -17,3 +17,8 @@ output "mappedip" {
   description = "Internal addresses or ranges the VIP maps to."
   value       = [for m in fortios_firewall_vip.this.mappedip : m.range]
 }
+
+output "service" {
+  description = "Firewall services that select the forwarded ports; empty when ports come from extport."
+  value       = sort([for s in fortios_firewall_vip.this.service : s.name])
+}

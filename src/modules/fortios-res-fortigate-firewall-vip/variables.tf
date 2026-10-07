@@ -67,6 +67,18 @@ variable "mappedport" {
   default     = null
 }
 
+variable "service" {
+  description = "Firewall services that select the forwarded ports, e.g. `[\"SSH\"]`, as an alternative to `extport`: names of custom services or service groups. Each entry becomes one `service` block. Empty leaves none."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = length(distinct(var.service)) == length(var.service)
+    error_message = "service must not repeat a name."
+  }
+}
+
 variable "arp_reply" {
   description = "Answer ARP requests for the external address. `enable` or `disable`; `null` leaves it unmanaged."
   type        = string
