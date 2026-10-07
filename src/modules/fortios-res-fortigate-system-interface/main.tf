@@ -14,6 +14,18 @@ resource "fortios_system_interface" "this" {
   dns_server_override   = var.dns_server_override
   device_identification = var.device_identification
 
+  # Secondary addresses, emitted in id order
+  secondary_ip = length(var.secondary_ips) > 0 ? "enable" : null
+
+  dynamic "secondaryip" {
+    for_each = { for v in values(var.secondary_ips) : format("%010d", v.id) => v }
+    content {
+      id          = secondaryip.value.id
+      ip          = "${secondaryip.value.ip} ${secondaryip.value.netmask}"
+      allowaccess = secondaryip.value.allowaccess
+    }
+  }
+
   # VLAN-specific
   vlanid    = var.vlanid
   interface = var.parent_interface

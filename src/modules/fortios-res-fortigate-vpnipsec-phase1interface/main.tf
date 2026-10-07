@@ -83,6 +83,8 @@ resource "fortios_vpnipsec_phase1interface" "this" {
   add_route             = var.add_route
   net_device            = var.net_device
   exchange_interface_ip = var.exchange_interface_ip
+  aggregate_member      = var.aggregate_member
+  aggregate_weight      = var.aggregate_weight
   network_overlay       = var.network_overlay
   network_id            = var.network_id
   wizard_type           = var.wizard_type

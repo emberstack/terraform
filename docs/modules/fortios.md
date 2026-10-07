@@ -198,6 +198,7 @@ address respectively. All three are kept in sync.
 |---|---|
 | [`fortios-res-fortigate-vpnipsec-phase1interface`](../../src/modules/fortios-res-fortigate-vpnipsec-phase1interface/) | Route-based IPsec gateway (site-to-site or dial-up with mode-cfg) |
 | [`fortios-res-fortigate-vpnipsec-phase2interface`](../../src/modules/fortios-res-fortigate-vpnipsec-phase2interface/) | Phase2 selector on a phase1 interface |
+| [`fortios-res-fortigate-system-ipsecaggregate`](../../src/modules/fortios-res-fortigate-system-ipsecaggregate/) | IPsec aggregate bundling phase1 tunnels for redundancy or load-balancing |
 
 ### Switch controller
 

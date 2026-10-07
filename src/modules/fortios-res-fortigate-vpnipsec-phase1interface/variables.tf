@@ -491,6 +491,33 @@ variable "exchange_interface_ip" {
   }
 }
 
+variable "aggregate_member" {
+  description = "Make this tunnel a member of an IPsec aggregate (`config system ipsec-aggregate`); see `fortios-res-fortigate-system-ipsecaggregate`. A member needs `net_device = \"disable\"`, and routes and policies then reference the aggregate rather than the tunnel. `enable` or `disable`; `null` leaves it unmanaged."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.aggregate_member == null || contains(["enable", "disable"], var.aggregate_member)
+    error_message = "aggregate_member must be enable or disable."
+  }
+
+  validation {
+    condition     = var.aggregate_member != "enable" || var.net_device != "enable"
+    error_message = "An aggregate member needs net_device disabled."
+  }
+}
+
+variable "aggregate_weight" {
+  description = "Share of traffic this member carries when the aggregate uses `weighted-round-robin`, 1 to 100. Ignored by the other algorithms. `null` leaves it unmanaged."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.aggregate_weight == null || (var.aggregate_weight >= 1 && var.aggregate_weight <= 100 && floor(var.aggregate_weight) == var.aggregate_weight)
+    error_message = "aggregate_weight must be a whole number from 1 to 100."
+  }
+}
+
 variable "network_overlay" {
   description = "Use `network_id` to tell apart several tunnels between the same gateways, or several dial-up tunnels on one interface. `enable` or `disable`; `null` leaves it unmanaged."
   type        = string

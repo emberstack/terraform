@@ -158,6 +158,53 @@ variable "ike_saml_server" {
   default     = ""
 }
 
+variable "secondary_ips" {
+  description = <<-EOT
+    Secondary IPv4 addresses on the interface, keyed by a stable identifier.
+    Each entry emits one `secondaryip` block, and a non-empty map also turns
+    `secondary-IP` on.
+
+    - `id` — FortiOS entry ID, the handle the device keys the entry by. Keep
+      it stable; blocks are emitted in `id` order.
+    - `ip` — IPv4 address, without a prefix.
+    - `netmask` — dotted-decimal subnet mask. Defaults to `255.255.255.255`.
+    - `allowaccess` — space-separated management services permitted on this
+      address. Empty string allows nothing.
+
+    Empty from the start, the sub-table is neither sent nor read, so secondary
+    addresses configured out of band stay unmanaged. Emptying a map that was
+    set clears the addresses but leaves `secondary-IP` as it was.
+  EOT
+  type = map(object({
+    id          = number
+    ip          = string
+    netmask     = optional(string, "255.255.255.255")
+    allowaccess = optional(string, "")
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for v in values(var.secondary_ips) : v.id >= 1 && floor(v.id) == v.id])
+    error_message = "Every secondary_ips id must be a whole number of 1 or more."
+  }
+
+  validation {
+    condition     = length(distinct([for v in values(var.secondary_ips) : v.id])) == length(var.secondary_ips)
+    error_message = "secondary_ips ids must be unique."
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.secondary_ips) : can(regex("^(\\d{1,3}\\.){3}\\d{1,3}$", v.ip)) && can(cidrhost("${v.ip}/32", 0))])
+    error_message = "Every secondary_ips ip must be a bare IPv4 address, without a prefix."
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.secondary_ips) : can(regex("^((255|254|252|248|240|224|192|128|0)\\.){3}(255|254|252|248|240|224|192|128|0)$", v.netmask))])
+    error_message = "Every secondary_ips netmask must be a dotted-decimal subnet mask, e.g. 255.255.255.255."
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Satellite resources — each is created only when its variable is non-null.
 # -----------------------------------------------------------------------------
