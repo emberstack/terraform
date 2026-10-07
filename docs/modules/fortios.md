@@ -215,6 +215,7 @@ address respectively. All three are kept in sync.
 | Module | What it manages |
 |---|---|
 | [`fortios-res-fortigate-system-interface`](../../src/modules/fortios-res-fortigate-system-interface/) | Network interface |
+| [`fortios-res-fortigate-system-zone`](../../src/modules/fortios-res-fortigate-system-zone/) | Zone grouping interfaces so policies reference one name |
 | [`fortios-res-fortigate-systemdhcp-server`](../../src/modules/fortios-res-fortigate-systemdhcp-server/) | DHCP server on an interface |
 | [`fortios-res-fortigate-system-acme`](../../src/modules/fortios-res-fortigate-system-acme/) | ACME client listening interfaces — the CA account is left to FortiOS |
 | [`fortios-res-fortigate-system-automationstitch`](../../src/modules/fortios-res-fortigate-system-automationstitch/) | Automation stitch |
