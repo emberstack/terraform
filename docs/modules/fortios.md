@@ -26,8 +26,10 @@ attribute unset rather than sending a default that would fight the device. Sever
 `fortios-res-fortigate-wirelesscontroller-wtp`, `fortios-res-fortigate-wirelesscontroller-wtpprofile`.
 
 **3. `dynamic_sort_subtable`.** The provider returns sub-tables in device order rather than configured
-order; setting this makes the comparison order-insensitive. Used in exactly one module today,
-`fortios-res-fortigate-system-dnsdatabase`, where the record sub-table is affected.
+order; setting this makes the comparison order-insensitive. `fortios-res-fortigate-system-dnsdatabase`
+hardcodes it for its record sub-table. `fortios-res-fortigate-system-interface` and
+`fortios-ptn-fortigate-system-interface` expose it as an input, unset by default, for `secondaryip`
+tables whose entries the device does not hold in `id` order.
 
 ### The cost
 

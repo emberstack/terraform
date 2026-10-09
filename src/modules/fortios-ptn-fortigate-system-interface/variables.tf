@@ -205,6 +205,29 @@ variable "secondary_ips" {
   }
 }
 
+variable "dynamic_sort_subtable" {
+  description = <<-EOT
+    How the provider orders the interface's sub-tables when it reads them back
+    for comparison: `false` (the provider default) keeps device order, `true`
+    or `natural` sorts in natural order, `alphabetical` as plain strings.
+    `null` leaves it unset.
+
+    The device returns `secondaryip` entries in its own order, which need not
+    be `id` order, while this module emits them by `id`. An entry added with a
+    lower `id` than an existing one then plans a positional rewrite of the
+    whole table on every run. `natural` sorts the read by `id` and removes it.
+    It also sorts `member` by interface name, so keep `members` in that order
+    when it is set.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.dynamic_sort_subtable == null || contains(["false", "true", "natural", "alphabetical"], var.dynamic_sort_subtable)
+    error_message = "dynamic_sort_subtable must be false, true, natural or alphabetical."
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Satellite resources — each is created only when its variable is non-null.
 # -----------------------------------------------------------------------------

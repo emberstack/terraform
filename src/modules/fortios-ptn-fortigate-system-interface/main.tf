@@ -9,8 +9,9 @@
 # -----------------------------------------------------------------------------
 
 resource "fortios_system_interface" "this" {
-  vdom            = "root"
-  update_if_exist = true
+  vdom                  = "root"
+  update_if_exist       = true
+  dynamic_sort_subtable = var.dynamic_sort_subtable
 
   name                  = var.name
   alias                 = var.alias
