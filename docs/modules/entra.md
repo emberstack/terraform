@@ -9,6 +9,7 @@ Modules on the `hashicorp/azuread` provider.
 | [`entra-res-group`](../../src/modules/entra-res-group/) | Group, its owners, and optional atomic placement into an administrative unit (+ [`modules/member`](#member-submodules)) |
 | [`entra-res-administrativeunit`](../../src/modules/entra-res-administrativeunit/) | Administrative unit and AU-scoped directory role assignments (+ [`modules/member`](#member-submodules)) |
 | [`entra-res-application`](../../src/modules/entra-res-application/) | Application registration and its service principal — custom or from a gallery template — with optional app roles, group and optional claims, client secret, claims mapping policy, SAML single sign-on and user/group assignments |
+| [`entra-res-serviceprincipal`](../../src/modules/entra-res-serviceprincipal/) | Service principal for an application registered elsewhere — a Microsoft first-party or another tenant's multi-tenant application — optionally adopting one that already exists ([`prevent_destroy` is hardcoded](#prevent_destroy-on-service-principals)) |
 | [`entra-ptn-group-collection`](../../src/modules/entra-ptn-group-collection/) | Many groups from one map — delegates to `entra-res-group` |
 | [`entra-ptn-group-memberships`](../../src/modules/entra-ptn-group-memberships/) | Arbitrary (group, principal) pairs, for membership managed independently of any group |
 | [`entra-ptn-pim-group`](../../src/modules/entra-ptn-pim-group/) | Brings an existing group under PIM — role management policies, eligibility and active assignment schedules |
@@ -88,3 +89,20 @@ convenience:
 - **Administrative unit placement.** When `administrative_unit_ids` is non-empty the group is created
   in the scope of the first AU and added to the rest in a single Graph call. The input is passed as
   `null` rather than `[]` when empty, so it does not conflict with AU membership managed separately.
+
+## `prevent_destroy` on service principals
+
+`entra-res-serviceprincipal` carries `lifecycle { prevent_destroy = true }`, and it is not
+configurable — the same stance as the [GitHub family](github.md#prevent_destroy-is-hardcoded).
+
+The service principals this module exists for are ones a service depends on: Entra Domain
+Services cannot be managed without its *Domain Controller Services* principal. Deleting one breaks
+that service, and recreating it does not restore it — the replacement has a new object ID and none
+of the old one's app role assignments or consents.
+
+**`terraform destroy` therefore fails on any configuration using the module**, and so does a
+`client_id` change, which forces a replacement. To retire a service principal, `terraform state rm`
+it and delete it deliberately in Entra.
+
+`entra-res-application` does not do this. A service principal it creates belongs to an application
+the same configuration owns, and goes when that application goes.

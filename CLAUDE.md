@@ -106,8 +106,9 @@ These are the ones that cause real damage when ignored. Each links to the reason
   for many attributes; a guessed `contains(...)` rejects working configurations.
 - **The Aegis tag contract is fixed.** Consumers key off the tag name and value. Read the banner in
   each `main.tf` before touching it. ([why](docs/modules/azure.md#aegis))
-- **`prevent_destroy` is hardcoded on three GitHub resources** and is not a bug.
-  ([why](docs/modules/github.md#prevent_destroy-is-hardcoded))
+- **`prevent_destroy` is hardcoded on three GitHub resources and on `entra-res-serviceprincipal`**
+  and is not a bug. ([why](docs/modules/github.md#prevent_destroy-is-hardcoded),
+  [why](docs/modules/entra.md#prevent_destroy-on-service-principals))
 
 ## Writing style
 

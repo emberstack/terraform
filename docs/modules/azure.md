@@ -17,6 +17,7 @@ lacks. Keep new inputs shaped the AVM way.
 
 | Module | What it manages |
 |---|---|
+| [`azure-res-aad-domainservice`](../../src/modules/azure-res-aad-domainservice/) | Entra Domain Services managed domain, with additional replica sets, secure LDAP, diagnostic settings, lock and role assignments — every security setting sent on every write, forest trusts not modelled |
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
 | [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
