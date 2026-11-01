@@ -27,7 +27,7 @@ Directory names follow AVM-style `<provider>-<kind>-<service>-<resource>`:
 
 | Segment | Values |
 |---|---|
-| provider | `azure` (azapi), `entra` (azuread), `fortios` (FortiGate), `github` |
+| provider | `azure` (azapi), `cloudamqp`, `entra` (azuread), `fortios` (FortiGate), `github` |
 | kind | `res`, `ptn`, `utl` |
 
 - **`res`** — resource module. Wraps a single logical resource plus tightly-coupled children.
@@ -44,6 +44,7 @@ modules carry nested submodules, documented alongside their parent.
 | Family | Provider | |
 |---|---|---|
 | Azure | `Azure/azapi` | [Guide](docs/modules/azure.md) |
+| CloudAMQP | `cloudamqp/cloudamqp` | [Guide](docs/modules/cloudamqp.md) |
 | Entra ID | `hashicorp/azuread` | [Guide](docs/modules/entra.md) |
 | FortiGate | `fortinetdev/fortios` | [Guide](docs/modules/fortios.md) |
 | GitHub | `integrations/github` | [Guide](docs/modules/github.md) |
@@ -68,7 +69,8 @@ checksum mismatches. Consumers pin their own.
 
 [`pipeline.yaml`](.github/workflows/pipeline.yaml) runs **discovery → build → gate → release** on every
 push to `main` and every pull request against `main`: `fmt`, a documentation consistency check, and
-`init` + `validate` across every module directory. Pushing a topic branch runs nothing until you open
+`init` + `validate` across every module directory, once at the newest provider in range and once at
+its floor. Pushing a topic branch runs nothing until you open
 the pull request. `release` runs on push to `main` only — merges are tagged and published
 automatically, a `feat:` commit bumping the minor and anything else the patch. Majors are not
 inferred from breaking changes — they are asked for with `+semver: major` or a bumped
@@ -79,6 +81,7 @@ The same checks locally:
 ```bash
 terraform fmt -recursive
 python .github/scripts/check-docs.py
+python .github/scripts/check-floors.py src/modules/<module-name>
 cd src/modules/<module-name> && terraform init -backend=false && terraform validate
 ```
 

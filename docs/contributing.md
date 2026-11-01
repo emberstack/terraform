@@ -31,7 +31,7 @@ request against `main`:
 | Job | What it does |
 |---|---|
 | `discovery` | Resolves the version from GitVersion and decides whether this run releases |
-| `build` | `terraform fmt`, the consistency checks, then `init -backend=false` + `validate` over [what actually changed](#what-triggers-what) |
+| `build` | `terraform fmt`, the consistency checks, then `init -backend=false` + `validate` over [what actually changed](#what-triggers-what) — once at the newest provider in range, once [at the floor](#validate-against-provider-floors) |
 | `gate` | Aggregates the results into one always-reporting status — **this is the required check** |
 | `release` | Tags and publishes — runs behind `gate`, on `main` only (push, or break-glass dispatch), when something under `src/` changed and `discovery` resolved an unreleased version |
 
@@ -272,6 +272,36 @@ find src/modules -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort 
 done
 ```
 
+### Validate against provider floors
+
+```bash
+python .github/scripts/check-floors.py                       # the whole tree, as CI runs it
+python .github/scripts/check-floors.py src/modules/<name>    # one module and its submodules
+```
+
+The sweep above resolves the newest provider inside each declared range, so it never tests the
+floor — the one version a module promises. A module that starts using an attribute added in azapi
+2.13 while still declaring `>= 2.12` passes it and breaks every consumer still on 2.12. This check
+runs the same `init` + `validate` with every provider pinned to the newest patch of its floor's
+minor — `>= 2.12` becomes `~> 2.12.0` — the rule CI already applies to
+[`TERRAFORM_VERSION`](#dependency-updates). Newest patch rather than the exact floor tolerates a
+`.0` that was yanked; the cost is that an attribute added in a patch release slips past.
+
+| | |
+|---|---|
+| Works on a copy | The pins are `floor_override.tf` files written into a temporary copy of `src/`. Your working tree, its `.terraform/` directories and its lock files are never touched |
+| Covers composition modules | Override files apply wherever a directory is loaded, so a module that declares no providers of its own is validated against its children's floors |
+| Checks its own pins | After each `init` the lock file is read back, and a provider that resolved outside its floor's minor fails the directory — an override that silently stopped applying cannot report a pass |
+
+When it fails and the main sweep passes, the module uses something newer than its floor. Either
+raise the floor — which forces every consumer to upgrade, see [Dependency updates](#dependency-updates)
+— or stop using the newer feature. A parent whose floor sits below one of its submodules' fails
+`init` here, with no version satisfying both pins. That failure is correct: the parent's declared
+floor was never reachable.
+
+It needs `terraform` on `PATH` and registry access, and uses `TF_PLUGIN_CACHE_DIR`, defaulting to
+the path above.
+
 ### The stale lock trap
 
 `.terraform.lock.hcl` is gitignored but still written locally. After a version floor bump in
@@ -300,8 +330,10 @@ Re-run with `terraform init -upgrade`. This is a local artefact, never a reposit
 6. **Add a banner** to `main.tf` only if there is non-obvious behaviour to explain.
 7. **Add the module** to the relevant family guide in [`docs/modules/`](modules/) — one row, and
    that is the whole documentation obligation. No counts to update anywhere; don't add any.
-8. `terraform fmt`, `init -backend=false`, `validate`, and
-   [`check-docs.py`](#consistency-checks) — the last one is what verifies steps 2, 4 and 7.
+8. `terraform fmt`, `init -backend=false`, `validate`,
+   [`check-floors.py`](#validate-against-provider-floors) and
+   [`check-docs.py`](#consistency-checks) — the floor check verifies step 3, the docs check steps 2,
+   4 and 7.
 
 A `README.md` and an `examples/basic/` are welcome but not required — most modules have neither,
 so a new module without them is not an outlier.
@@ -451,7 +483,8 @@ to the pinned action for the length of one step rather than left sitting on the 
 
 **Provider constraint bumps are not automated.** A floor in `versions.tf` is a compatibility promise
 to consumers, not a number to keep current — raising a floor forces every consumer to upgrade.
-With `rangeStrategy: in-range-only` Renovate never rewrites a declared range, so no provider pull
+`build` [validates every module at its floor](#validate-against-provider-floors), so a floor that
+falls behind what a module uses fails CI rather than a consumer. With `rangeStrategy: in-range-only` Renovate never rewrites a declared range, so no provider pull
 request opens and nothing waits on the dashboard either.
 
 That covers provider majors in general: `Azure/azapi`, `hashicorp/azuread`, `fortinetdev/fortios`,

@@ -26,6 +26,7 @@ with the next module change. Pick one:
 - [ ] `terraform fmt -recursive`
 - [ ] `python .github/scripts/check-docs.py`
 - [ ] `terraform init -backend=false && terraform validate` in each module touched
+- [ ] `python .github/scripts/check-floors.py src/modules/<name>` for each module touched
 - [ ] New module: added to the family guide in
       [`docs/modules/`](https://github.com/emberstack/terraform/tree/main/docs/modules) and all five
       counts updated — see

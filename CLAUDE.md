@@ -11,7 +11,7 @@ you need the detail, read the doc; when you change a convention, update the doc.
 | Naming, module anatomy, variable and comment style | [docs/conventions.md](docs/conventions.md) |
 | Validation loop, adding a module, deferred work | [docs/contributing.md](docs/contributing.md) |
 | Source refs, pinning, provider wiring, version matrix | [docs/usage.md](docs/usage.md) |
-| Per-family behaviour and quirks | [docs/modules/](docs/modules/) — [azure](docs/modules/azure.md), [entra](docs/modules/entra.md), [fortios](docs/modules/fortios.md), [github](docs/modules/github.md), [helm](docs/modules/helm.md), [kubernetes](docs/modules/kubernetes.md) |
+| Per-family behaviour and quirks | [docs/modules/](docs/modules/) — [azure](docs/modules/azure.md), [cloudamqp](docs/modules/cloudamqp.md), [entra](docs/modules/entra.md), [fortios](docs/modules/fortios.md), [github](docs/modules/github.md), [helm](docs/modules/helm.md), [kubernetes](docs/modules/kubernetes.md) |
 
 ## What this repository is
 
@@ -27,7 +27,7 @@ include them. The inventory is [docs/modules/](docs/modules/) — nowhere else.
 
 CI is [`.github/workflows/pipeline.yaml`](.github/workflows/pipeline.yaml), four jobs:
 **discovery → build → gate → release**. `discovery` resolves the version, `build` runs `fmt` + the docs
-check + `validate`, `gate` is the single required status check, and `release` tags and publishes.
+check + `validate` (twice: newest provider in range, then every provider pinned to its floor), `gate` is the single required status check, and `release` tags and publishes.
 `build` is skipped entirely when a change touches neither `src/` nor the docs; any change under `src/`
 validates the whole tree. Every merge that touches `src/` is released — **`feat:` bumps the minor and
 anything else the patch. A major is never inferred: ask for it with `+semver: major` or a bumped
@@ -39,6 +39,7 @@ Run the same checks locally before pushing:
 ```powershell
 terraform fmt -recursive                                    # from repo root
 python .github/scripts/check-docs.py
+python .github/scripts/check-floors.py src/modules/<module-name>
 cd src/modules/<module-name>
 terraform init -backend=false && terraform validate
 ```

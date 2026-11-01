@@ -89,8 +89,10 @@ module "site_a_policy" {
 one more thing to bump.
 
 Every provider constraint carries an upper bound below the next major, so a major release cannot
-reach you unannounced. Floors are the newest published version at the time of writing, so a fresh
-`init` normally resolves to the floor exactly. `required_version` is uniform across the tree.
+reach you unannounced. Floors are the newest published version at the time a module is written, and
+CI validates every module at both ends of its range: the newest release inside it, and the newest
+patch of the floor's minor. A fresh `init` picks the newest version in range; the floor is the
+lowest minor CI proves works. `required_version` is uniform across the tree.
 
 ## Lock files
 

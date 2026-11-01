@@ -202,7 +202,7 @@ jobs:
           fi
 
           if [ "${MODULES:-}" = "true" ]; then
-            scope="Formatting, consistency checks, and \`validate\` across the module tree"
+            scope="Formatting, consistency checks, and \`validate\` across the module tree — at the newest provider in range and at the floor"
           elif [ "${DOCS:-}" = "true" ]; then
             scope="Consistency checks only"
           else
@@ -308,6 +308,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           [ ${#failed[@]} -eq 0 ]
+
+      # The sweep above resolves the newest provider inside each declared range,
+      # so it never tests the floor — the version a module actually promises.
+      # This one pins every provider to its floor and validates the tree again,
+      # the same "prove the floor is honest" rule TERRAFORM_VERSION follows.
+      # Reuses the plugin cache above; the script defaults to the same path.
+      - name: Validate provider floors
+        if: ${{ !cancelled() && needs.discovery.outputs.modules == 'true' }}
+        run: python3 .github/scripts/check-floors.py
 
   # The single required check for branch protection. `build` cannot serve that
   # role: it is skipped when a change touches neither modules nor docs, and a

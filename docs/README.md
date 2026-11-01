@@ -18,6 +18,7 @@ works around — and lists every module in it.
 | Family | Provider |
 |---|---|
 | [Azure](modules/azure.md) | `Azure/azapi` |
+| [CloudAMQP](modules/cloudamqp.md) | `cloudamqp/cloudamqp` |
 | [Entra ID](modules/entra.md) | `hashicorp/azuread` |
 | [FortiGate](modules/fortios.md) | `fortinetdev/fortios` |
 | [GitHub](modules/github.md) | `integrations/github` |
