@@ -20,6 +20,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-aad-domainservice`](../../src/modules/azure-res-aad-domainservice/) | Entra Domain Services managed domain, with additional replica sets, secure LDAP, diagnostic settings, lock and role assignments — every security setting sent on every write, forest trusts not modelled |
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
+| [`azure-res-containerregistry-registry`](../../src/modules/azure-res-containerregistry-registry/) | Container registry — tier, network access and rules, policies, role-assignment mode, customer-managed key — with geo-replications, image imports, private endpoint, diagnostic settings, management lock and role assignments |
 | [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
 | [`azure-res-fabric-capacity`](../../src/modules/azure-res-fabric-capacity/) | Microsoft Fabric capacity and role assignments, with capacity administrators reconciled out of band ([why](#fabric-capacity-administrators)) |
 | [`azure-res-insights-metricalert`](../../src/modules/azure-res-insights-metricalert/) | Azure Monitor metric alert rule — static and dynamic thresholds, dimension filters, single- or multi-resource scope and action groups — criteria always sent as `MultipleResourceMultipleMetricCriteria` |
@@ -36,10 +37,12 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-network-publicipaddress`](../../src/modules/azure-res-network-publicipaddress/) | Static Standard or StandardV2 public IP, optionally from a prefix, with DNS label, DDoS settings, IP tags and role assignments — zones kept in ARM's own order |
 | [`azure-res-network-routeserver`](../../src/modules/azure-res-network-routeserver/) | Route server (a `virtualHubs` resource with no virtual WAN), with its IP configuration, the public IP it requires, diagnostic settings, lock and role assignments (+ [`modules/bgp-connection`](#submodule-bgp-connection)) |
 | [`azure-res-network-virtualnetworkgateway`](../../src/modules/azure-res-network-virtualnetworkgateway/) | VPN or ExpressRoute gateway in an existing `GatewaySubnet`, active-standby or active-active, with BGP and custom APIPA peering addresses, diagnostic settings, lock and role assignments — site-to-site only, so point-to-site and NAT rules are not sent |
+| [`azure-res-operationalinsights-workspace`](../../src/modules/azure-res-operationalinsights-workspace/) | Log Analytics workspace — pricing tier, retention, daily cap, network access, identity — with its workspace transformation DCR and default-DCR link, Sentinel onboarding, linked storage accounts and role assignments |
 | [`azure-res-policy-assignment`](../../src/modules/azure-res-policy-assignment/) | Policy or initiative assignment, [scope-routed](#scope-routing) |
 | [`azure-res-policy-definition`](../../src/modules/azure-res-policy-definition/) | Policy definition |
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
 | [`azure-res-policy-set-definition`](../../src/modules/azure-res-policy-set-definition/) | Policy initiative |
+| [`azure-res-security-securitycontact`](../../src/modules/azure-res-security-securitycontact/) | Defender for Cloud security contact — who is emailed about alerts and attack paths, and from which severity or risk |
 | [`azure-res-signalrservice-signalr`](../../src/modules/azure-res-signalrservice-signalr/) | SignalR service, with network ACL, private endpoint, diagnostic settings, lock and role assignments |
 | [`azure-res-sql-managedinstance`](../../src/modules/azure-res-sql-managedinstance/) | Azure SQL managed instance, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, threat protection, vulnerability assessment, diagnostic settings, lock and role assignments — identity, key and SKU all in the create PUT, so a CMK instance needs no second pass ([SKU names](#managed-instance-sku-names)) |
 | [`azure-res-sql-server`](../../src/modules/azure-res-sql-server/) | Azure SQL logical server, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, auditing, connection policy, firewall and virtual network rules, private endpoint, diagnostic settings, lock and role assignments (+ [`modules/elastic-pool`](#submodule-elastic-pool-and-database), [`modules/database`](#submodule-elastic-pool-and-database)) |
@@ -62,7 +65,9 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-ptn-network-virtualnetwork-dnsservers`](../../src/modules/azure-ptn-network-virtualnetwork-dnsservers/) | DNS server list on an existing virtual network |
 | [`azure-ptn-policy-aegis-shield-protection`](../../src/modules/azure-ptn-policy-aegis-shield-protection/) | [Aegis](#aegis) deny-delete by explicit resource ID |
 | [`azure-ptn-policy-aegis-shield-tag-protection`](../../src/modules/azure-ptn-policy-aegis-shield-tag-protection/) | [Aegis](#aegis) tag-driven deny-delete |
+| [`azure-ptn-policy-assignment-collection`](../../src/modules/azure-ptn-policy-assignment-collection/) | Many policy or initiative assignments from one map, each [scope-routed](#scope-routing), with role assignments for their system identities |
 | [`azure-ptn-policy-exemption-collection`](../../src/modules/azure-ptn-policy-exemption-collection/) | Many policy exemptions from one map |
+| [`azure-ptn-security-pricing-collection`](../../src/modules/azure-ptn-security-pricing-collection/) | Defender for Cloud plans of a subscription — tier, sub-plan and extensions — with optional malware-scan-results diagnostic settings on every blob storage account |
 
 ## Scope routing
 
@@ -97,8 +102,9 @@ different resource group or subscription than the one it is assigned at.
 
 `azure-res-network-privateendpoint` covers the case the service-owning modules do not: an endpoint
 whose target belongs to someone else. Where a module wraps its own private-linkable service —
-`azure-res-cache-redis`, `azure-res-signalrservice-signalr` — its built-in `private_endpoints` input
-stays the right tool, because it can reference the target resource directly.
+`azure-res-cache-redis`, `azure-res-containerregistry-registry`, `azure-res-signalrservice-signalr` —
+its built-in `private_endpoints` input stays the right tool, because it can reference the target
+resource directly.
 
 ARM carries the connection in one of two mutually exclusive body properties, and `is_manual_connection`
 picks which:
