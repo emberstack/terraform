@@ -1,7 +1,7 @@
 # Azure Firewall Policy
 
 An Azure Firewall policy (`Microsoft.Network/firewallPolicies`) — tier, threat intelligence,
-IDPS, DNS proxy, SNAT private ranges and an optional base policy — with a management lock and
+IDPS, DNS proxy, explicit proxy, SNAT private ranges and an optional base policy — with a management lock and
 policy-scope role assignments. Rules live in rule collection groups, added with
 [`modules/rule-collection-group`](./modules/rule-collection-group/) — see [Submodules](#submodules).
 The firewall that uses the policy is [`azure-res-network-azurefirewall`](../azure-res-network-azurefirewall/).
@@ -36,6 +36,11 @@ module "firewall_policy" {
   firewall_policy_dns = {
     proxy_enabled = true
     servers       = ["10.0.0.4"]
+  }
+
+  firewall_policy_explicit_proxy = {
+    enabled   = true
+    http_port = 8080
   }
 
   firewall_policy_private_ip_ranges = ["IANAPrivateRanges", "203.0.113.0/24"]
@@ -80,9 +85,15 @@ service — so each is a unit of its own rather than an input here.
 ## Notes
 
 - **Not everything a policy can hold is modelled.** ARM writes are full replaces, and the body never
-  carries explicit proxy, TLS inspection, insights, the threat intelligence allowlist, the SQL
-  redirect or a managed identity. Do not manage a policy with any of them configured elsewhere —
-  the next write sends a body without them.
+  carries TLS inspection, insights, the threat intelligence allowlist, the SQL redirect or a managed
+  identity. Do not manage a policy with any of them configured elsewhere — the next write sends a
+  body without them.
+- **Explicit proxy is off until `enabled = true`.** Even then it passes nothing on its own:
+  application rules decide every proxied request, so enable it alongside a rule that allows the
+  clients. HTTP and HTTPS share `http_port`; `httpsPort` is never sent. Standard and Premium tiers
+  only.
+- **A PAC file is fetched from a SAS URL.** The module sends no identity, so the user-assigned
+  identity Microsoft's PAC guidance attaches to the policy is not available here.
 - **No diagnostic settings.** `Microsoft.Network/firewallPolicies` does not support them; the
   firewall emits the logs.
 - **`firewall_policy_private_ip_ranges` replaces Azure's default.** Include `IANAPrivateRanges`

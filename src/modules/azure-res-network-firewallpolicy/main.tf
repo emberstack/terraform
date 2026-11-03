@@ -7,8 +7,8 @@
 # have owners of their own, so they live in `modules/rule-collection-group`.
 #
 # ARM writes are full replaces, and this body models the tier, threat
-# intelligence, IDPS, DNS, SNAT private ranges and the base policy. Explicit
-# proxy, TLS inspection, insights, the threat intelligence allowlist, the SQL
+# intelligence, IDPS, DNS, explicit proxy, SNAT private ranges and the base
+# policy. TLS inspection, insights, the threat intelligence allowlist, the SQL
 # redirect and a managed identity are never sent, so a policy carrying any of
 # them must not be managed here: the next write replaces the body without them.
 #
@@ -88,6 +88,14 @@ resource "azapi_resource" "this" {
       dnsSettings = var.firewall_policy_dns == null ? null : {
         enableProxy = var.firewall_policy_dns.proxy_enabled
         servers     = var.firewall_policy_dns.servers
+      }
+      # One port carries HTTP and HTTPS, so `httpsPort` is never sent.
+      explicitProxy = var.firewall_policy_explicit_proxy == null ? null : {
+        enableExplicitProxy = var.firewall_policy_explicit_proxy.enabled
+        enablePacFile       = var.firewall_policy_explicit_proxy.enable_pac_file
+        httpPort            = var.firewall_policy_explicit_proxy.http_port
+        pacFile             = var.firewall_policy_explicit_proxy.pac_file
+        pacFilePort         = var.firewall_policy_explicit_proxy.pac_file_port
       }
       intrusionDetection = local.intrusion_detection
       sku = {

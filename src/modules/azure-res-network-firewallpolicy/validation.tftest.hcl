@@ -41,7 +41,7 @@ run "plans_standard_policy_with_defaults" {
     error_message = "tier and threat intelligence mode must be sent with their defaults"
   }
   assert {
-    condition     = azapi_resource.this.body.properties.intrusionDetection == null && azapi_resource.this.body.properties.dnsSettings == null && azapi_resource.this.body.properties.snat == null && azapi_resource.this.body.properties.basePolicy == null
+    condition     = azapi_resource.this.body.properties.intrusionDetection == null && azapi_resource.this.body.properties.dnsSettings == null && azapi_resource.this.body.properties.explicitProxy == null && azapi_resource.this.body.properties.snat == null && azapi_resource.this.body.properties.basePolicy == null
     error_message = "unset blocks must be null, dropped by ignore_null_property"
   }
   assert {
@@ -117,6 +117,64 @@ run "plans_idps_bypass_and_signature_override" {
   }
 }
 
+run "plans_explicit_proxy_disabled_unless_enabled" {
+  command = plan
+
+  variables {
+    firewall_policy_explicit_proxy = {
+      http_port = 8080
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.explicitProxy.enableExplicitProxy == false && azapi_resource.this.body.properties.explicitProxy.httpPort == 8080
+    error_message = "the proxy must stay off unless enabled is set, with its port still sent"
+  }
+}
+
+run "plans_explicit_proxy_on_one_port" {
+  command = plan
+
+  variables {
+    firewall_policy_explicit_proxy = {
+      enabled   = true
+      http_port = 8080
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.explicitProxy.enableExplicitProxy == true && azapi_resource.this.body.properties.explicitProxy.httpPort == 8080
+    error_message = "the proxy must be enabled on the given port"
+  }
+  assert {
+    condition     = !can(azapi_resource.this.body.properties.explicitProxy.httpsPort)
+    error_message = "httpsPort must never be sent: HTTP and HTTPS share http_port"
+  }
+  assert {
+    condition     = azapi_resource.this.body.properties.explicitProxy.enablePacFile == false && azapi_resource.this.body.properties.explicitProxy.pacFile == null && azapi_resource.this.body.properties.explicitProxy.pacFilePort == null
+    error_message = "without a PAC file, the PAC flag must be false and its port and URL null"
+  }
+}
+
+run "plans_explicit_proxy_with_pac_file" {
+  command = plan
+
+  variables {
+    firewall_policy_explicit_proxy = {
+      enabled         = true
+      http_port       = 8080
+      enable_pac_file = true
+      pac_file_port   = 8081
+      pac_file        = "https://stexample.blob.core.windows.net/pac/proxy.pac"
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.explicitProxy.enablePacFile == true && azapi_resource.this.body.properties.explicitProxy.pacFilePort == 8081 && azapi_resource.this.body.properties.explicitProxy.pacFile == "https://stexample.blob.core.windows.net/pac/proxy.pac"
+    error_message = "PAC settings must be sent as configured"
+  }
+}
+
 # =============================================================================
 # NEGATIVE
 # =============================================================================
@@ -165,4 +223,43 @@ run "rejects_base_policy_that_is_not_a_policy" {
   }
 
   expect_failures = [var.firewall_policy_base_policy_id]
+}
+
+run "rejects_explicit_proxy_on_basic" {
+  command = plan
+
+  variables {
+    firewall_policy_sku = "Basic"
+    firewall_policy_explicit_proxy = {
+      http_port = 8080
+    }
+  }
+
+  expect_failures = [var.firewall_policy_explicit_proxy]
+}
+
+run "rejects_explicit_proxy_port_above_64000" {
+  command = plan
+
+  variables {
+    firewall_policy_explicit_proxy = {
+      http_port = 65000
+    }
+  }
+
+  expect_failures = [var.firewall_policy_explicit_proxy]
+}
+
+run "rejects_pac_file_without_url" {
+  command = plan
+
+  variables {
+    firewall_policy_explicit_proxy = {
+      http_port       = 8080
+      enable_pac_file = true
+      pac_file_port   = 8081
+    }
+  }
+
+  expect_failures = [var.firewall_policy_explicit_proxy]
 }

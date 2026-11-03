@@ -130,6 +130,57 @@ variable "firewall_policy_dns" {
   EOT
 }
 
+variable "firewall_policy_explicit_proxy" {
+  type = object({
+    enabled         = optional(bool, false)
+    http_port       = number
+    enable_pac_file = optional(bool, false)
+    pac_file_port   = optional(number, null)
+    pac_file        = optional(string, null)
+  })
+  default     = null
+  description = <<-EOT
+    Explicit proxy: clients address the firewall's private IP as their HTTP proxy
+    instead of being routed through it. Standard and Premium tiers only. Null leaves
+    it at Azure's default, off.
+
+    - `enabled`: the proxy listens only when this is true. False, the default,
+      keeps the settings but stops the proxy.
+    - `http_port`: the one port the proxy listens on, for HTTP and HTTPS alike.
+    - `enable_pac_file`, `pac_file_port`, `pac_file`: the firewall serves a proxy
+      auto-configuration file on `pac_file_port`, fetched from `pac_file`, a SAS URL.
+      Microsoft's current guidance fetches it with a user-assigned identity on the
+      policy instead; this module sends no identity.
+
+    Application rules decide every proxied request: the proxy passes nothing until
+    one allows it.
+  EOT
+
+  validation {
+    condition     = var.firewall_policy_explicit_proxy == null || var.firewall_policy_sku != "Basic"
+    error_message = "firewall_policy_explicit_proxy requires firewall_policy_sku = \"Standard\" or \"Premium\"."
+  }
+
+  validation {
+    condition = var.firewall_policy_explicit_proxy == null || (
+      try(var.firewall_policy_explicit_proxy.http_port, null) != null && alltrue([
+        for port in [
+          for p in [try(var.firewall_policy_explicit_proxy.http_port, null), try(var.firewall_policy_explicit_proxy.pac_file_port, null)] : p if p != null
+        ] : port >= 1 && port <= 64000 && floor(port) == port
+      ])
+    )
+    error_message = "firewall_policy_explicit_proxy http_port is required, and http_port and pac_file_port must be whole numbers from 1 to 64000."
+  }
+
+  validation {
+    condition = !try(var.firewall_policy_explicit_proxy.enable_pac_file, false) || (
+      try(var.firewall_policy_explicit_proxy.pac_file_port, null) != null &&
+      try(var.firewall_policy_explicit_proxy.pac_file, null) != null
+    )
+    error_message = "firewall_policy_explicit_proxy.enable_pac_file requires pac_file_port and pac_file."
+  }
+}
+
 variable "firewall_policy_private_ip_ranges" {
   type        = list(string)
   default     = null
