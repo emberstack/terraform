@@ -20,6 +20,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-aad-domainservice`](../../src/modules/azure-res-aad-domainservice/) | Entra Domain Services managed domain, with additional replica sets, secure LDAP, diagnostic settings, lock and role assignments — every security setting sent on every write, forest trusts not modelled |
 | [`azure-res-authorization-roledefinition`](../../src/modules/azure-res-authorization-roledefinition/) | Custom RBAC role definition |
 | [`azure-res-cache-redis`](../../src/modules/azure-res-cache-redis/) | Managed Redis, with private endpoint, diagnostic settings, management lock and role assignments |
+| [`azure-res-cdn-profile`](../../src/modules/azure-res-cdn-profile/) | Front Door Standard or Premium profile — tier, origin response timeout, log scrubbing, managed identities — with diagnostic settings, lock and role assignments, exporting the `X-Azure-FDID` value its origins see (+ [`modules/origin-group`](#submodule-origin-group-afd-endpoint-and-rule-set), [`modules/afd-endpoint`](#submodule-origin-group-afd-endpoint-and-rule-set), [`modules/rule-set`](#submodule-origin-group-afd-endpoint-and-rule-set)) |
 | [`azure-res-containerregistry-registry`](../../src/modules/azure-res-containerregistry-registry/) | Container registry — tier, network access and rules, policies, role-assignment mode, customer-managed key — with geo-replications, image imports, private endpoint, diagnostic settings, management lock and role assignments |
 | [`azure-res-containerservice-managedcluster`](../../src/modules/azure-res-containerservice-managedcluster/) | AKS managed cluster and its system node pool, with public or private API server, Entra integration, customer-managed keys for node disks and etcd, the policy, secrets-provider and load balancer add-ons, diagnostic settings, lock and role assignments (+ [`modules/agentpool`](#submodule-agentpool)) |
 | [`azure-res-fabric-capacity`](../../src/modules/azure-res-fabric-capacity/) | Microsoft Fabric capacity and role assignments, with capacity administrators reconciled out of band ([why](#fabric-capacity-administrators)) |
@@ -32,6 +33,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-network-dnsforwardingruleset`](../../src/modules/azure-res-network-dnsforwardingruleset/) | DNS forwarding ruleset on one or two outbound endpoints of a DNS resolver, with virtual network links and role assignments — forwarding rules are added separately by `azure-ptn-network-dnsforwardingruleset-rules` |
 | [`azure-res-network-dnszone`](../../src/modules/azure-res-network-dnszone/) | Public DNS zone and role assignments, optionally writing the delegation NS record into a parent zone |
 | [`azure-res-network-firewallpolicy`](../../src/modules/azure-res-network-firewallpolicy/) | Azure Firewall policy — tier, threat intelligence, IDPS, DNS proxy, explicit proxy, SNAT private ranges and base policy — with lock and role assignments (+ [`modules/rule-collection-group`](#submodule-rule-collection-group)) |
+| [`azure-res-network-frontdoorwebapplicationfirewallpolicy`](../../src/modules/azure-res-network-frontdoorwebapplicationfirewallpolicy/) | WAF policy for Front Door Standard or Premium — policy settings, log scrubbing, custom and rate-limit rules, and on Premium managed rule sets with per-rule overrides and exclusions — with lock and role assignments; attached by an endpoint's security policy, and its SKU must match the profile's |
 | [`azure-res-network-networkmanager`](../../src/modules/azure-res-network-networkmanager/) | Virtual network manager — management group and subscription scopes, scope accesses — and role assignments; network groups and configurations are managed separately |
 | [`azure-res-network-privatednszone`](../../src/modules/azure-res-network-privatednszone/) | Private DNS zone and role assignments (+ [`modules/vnet-link`](#submodule-vnet-link)) |
 | [`azure-res-network-privateendpoint`](../../src/modules/azure-res-network-privateendpoint/) | Standalone private endpoint against a target owned elsewhere, [automatic or manual](#manual-connection-approval), with DNS zone group, management lock and role assignments |
@@ -338,6 +340,54 @@ neither can be recovered. LTR is the only class that outlives the server, and an
 unconfigured policy reads back as `PT0S` on every field - indistinguishable from having
 none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keeps no
 yearly backup at all.
+
+## Submodule: origin-group, afd-endpoint and rule-set
+
+[`azure-res-cdn-profile/modules/origin-group`](../../src/modules/azure-res-cdn-profile/modules/origin-group/),
+[`azure-res-cdn-profile/modules/afd-endpoint`](../../src/modules/azure-res-cdn-profile/modules/afd-endpoint/)
+and
+[`azure-res-cdn-profile/modules/rule-set`](../../src/modules/azure-res-cdn-profile/modules/rule-set/)
+
+All three take the profile's `resource_id` as `cdn_profile_resource_id`, so one shared profile
+can carry origin groups, endpoints and rule sets owned by other configurations — one per
+environment, say. A route names its origin group and rule sets by ID, so those are created
+first.
+
+An origin group reaches its origins one of two ways, never both in one group:
+
+| | Public origin | Private Link origin |
+|---|---|---|
+| Tier | Standard or Premium | Premium |
+| Origin network | reachable from Front Door's edge, so public | can refuse public access; Front Door connects through a private endpoint in a network it manages |
+| Managed-identity authentication | supported (Microsoft lists it as preview), with an HTTPS probe and `HttpsOnly` routes | not supported |
+| Approval | — | on the target, out of band; until then the origin answers with errors |
+
+A storage static website suits the Private Link column. Its `web` endpoint serves `$web`
+anonymously by design, whatever the account's `allowBlobPublicAccess`, so nothing has to
+authenticate and the account can still refuse public network access.
+
+`afd-endpoint` also owns the security policy that puts a WAF policy in front of its domains — a
+child of the profile in ARM, but meaningless apart from the domains it names. A WAF policy can
+back only one security policy per profile, so endpoints that share a profile each need a WAF
+policy of their own. Custom domains and rule sets are referenced by ID; neither is created here,
+with one exception: a route's `cache.duration`. Standard and Premium set a fixed cache lifetime
+only through a rule set rule, so the module gives such a route a rule set of its own
+(`<route key>cache`) with one unconditional rule that overrides the route's cache configuration
+and the origin's `Cache-Control`.
+
+`rule-set` holds rules any route on the profile can list in `rule_set_resource_ids`: header
+changes, URL rewrites and redirects, and route configuration overrides that send matching
+requests to another origin group or change how they are cached. Only the actions Standard and
+Premium support are exposed. Front Door runs a route's rule sets in the order the route lists
+them, with `afd-endpoint`'s cache rule set last. A matching rule with `stop_evaluating` skips
+everything after it, that cache rule set included, so those requests lose the route's fixed
+lifetime. A route configuration override without `cache` turns caching off for the requests it
+matches.
+
+The endpoint's hostname, `<name>-<hash>.<zone>.azurefd.net`, is exported as `host_name`. With
+the default `TenantReuse` scope the hash depends only on the name within the tenant: a recreated
+endpoint keeps its hostname, and two live endpoints of the same name — in any two profiles of the
+tenant — collide.
 
 ## Submodule: rule-collection-group
 
