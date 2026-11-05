@@ -72,6 +72,23 @@ variable "outbound_network_restriction_enabled" {
   nullable    = false
 }
 
+variable "soft_delete_retention_days" {
+  type        = number
+  default     = null
+  description = <<-EOT
+    Days a deleted server stays recoverable (ARM `retentionDays`, in preview):
+    1-7, or 0 to turn soft delete off. Null leaves Azure's setting alone, which
+    is off for servers under two years old and 7 days for older ones.
+    Restoring a soft-deleted server brings back the server itself; its databases
+    are restored separately from their backups, within their retention.
+  EOT
+
+  validation {
+    condition     = var.soft_delete_retention_days == null || try(var.soft_delete_retention_days >= 0 && var.soft_delete_retention_days <= 7, false)
+    error_message = "soft_delete_retention_days must be between 0 and 7."
+  }
+}
+
 variable "connection_policy" {
   type        = string
   default     = null

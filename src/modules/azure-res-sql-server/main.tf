@@ -161,6 +161,7 @@ resource "azapi_resource" "this" {
       primaryUserAssignedIdentityId = var.primary_user_assigned_identity_resource_id
       publicNetworkAccess           = var.public_network_access_enabled ? "Enabled" : "Disabled"
       restrictOutboundNetworkAccess = var.outbound_network_restriction_enabled ? "Enabled" : "Disabled"
+      retentionDays                 = var.soft_delete_retention_days
       version                       = var.server_version
     }
   }

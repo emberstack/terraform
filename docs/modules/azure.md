@@ -336,7 +336,10 @@ unmanaged. The consequence is asymmetric:
 | `long_term_retention` (LTR) | yes | **yes**, restorable to another server |
 
 Deleting a logical server deletes its databases and their PITR backups together, and
-neither can be recovered. LTR is the only class that outlives the server, and an
+neither can be recovered unless the server has soft delete (`soft_delete_retention_days`
+on the root module, preview, 1-7 days): a soft-deleted server can be restored, and its
+databases then restored within their retention. Servers under two years old have it
+off by default. LTR is the only class that outlives the server, and an
 unconfigured policy reads back as `PT0S` on every field - indistinguishable from having
 none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keeps no
 yearly backup at all. Without a yearly backup the module sends `weekOfYear = 1` and
