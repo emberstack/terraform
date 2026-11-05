@@ -8,6 +8,7 @@ Modules on the `cloudamqp/cloudamqp` provider.
 |---|---|---|
 | [`cloudamqp-res-vpc`](../../src/modules/cloudamqp-res-vpc/) | A VPC that dedicated instances join | — |
 | [`cloudamqp-res-instance`](../../src/modules/cloudamqp-res-instance/) | A broker instance, with its private link and firewall | — |
+| [`cloudamqp-res-integration-metrics-prometheus`](../../src/modules/cloudamqp-res-integration-metrics-prometheus/) | A Prometheus metric integration that ships an instance's metrics to one backend — Azure Monitor, CloudWatch, Datadog, Dynatrace, Grafana Cloud, New Relic, remote write, Splunk or Google Cloud Monitoring | — |
 
 ## Keep the VPC in its own module
 
@@ -40,7 +41,24 @@ record that makes it resolve needs the instance's `host`. Inside one module that
 owned by a different configuration, the order is instance, then DNS record, then custom domain, so the
 custom domain cannot sit inside the instance module.
 
+## One backend per metric integration
+
+`cloudamqp_integration_metric_prometheus` takes exactly one backend block per integration. Each
+backend the provider offers is its own optional input — `azure_monitor`, `cloudwatch_v3`, `datadog_v3`,
+`dynatrace`, `grafana`, `newrelic_v3`, `prometheus_remote_write`, `splunk_v2`, `stackdriver_v2` — and a
+precondition fails the plan unless exactly one is set. To ship one instance's metrics to two backends,
+call the module twice.
+
+Every backend input that carries a credential is sensitive. The `backend` output names the one that
+was set. Leaving `metrics_filter` null ships CloudAMQP's default metric set; an empty list is rejected
+rather than guessed at.
+
 ## Tags are strings
 
-CloudAMQP tags are a `list(string)`, not a key/value map, so the `map(string)` tags an Azure
-configuration carries cannot be passed through. Both modules default `tags` to `[]`.
+CloudAMQP instance and VPC tags are a `list(string)`, not a key/value map, so the `map(string)` tags an
+Azure configuration carries cannot be passed through. The VPC and instance modules both default `tags`
+to `[]`.
+
+Metric integrations are the exception: their backends take tags as one `key=value,key2=value2` string.
+The integration module accepts a `map(string)` and renders that string in key order, so `,` and `=` are
+rejected inside keys and values. Azure Monitor takes no tags at all.
