@@ -339,7 +339,9 @@ Deleting a logical server deletes its databases and their PITR backups together,
 neither can be recovered. LTR is the only class that outlives the server, and an
 unconfigured policy reads back as `PT0S` on every field - indistinguishable from having
 none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keeps no
-yearly backup at all.
+yearly backup at all. Without a yearly backup the module sends `weekOfYear = 1` and
+ignores the field: ARM rejects 0 on write but reads it back as 0, so sending 1 alone
+would diff on every plan.
 
 ## Submodule: origin-group, afd-endpoint and rule-set
 

@@ -187,9 +187,16 @@ resource "azapi_update_resource" "short_term_retention" {
 # The only backup class that survives deletion of the server. An all-zero policy
 # (`PT0S` everywhere) is what Azure reports when LTR was never configured, and
 # is indistinguishable from having none.
+#
+# Two resources, because `weekOfYear` behaves differently without a yearly
+# backup: ARM rejects `weekOfYear = 0` on write (LongTermRetentionMissingWeekOfYear,
+# even with `yearlyRetention = PT0S`), yet reads it back as 0 whenever no yearly
+# backup is kept. The no-yearly variant therefore sends 1 and ignores the field.
+# Only one of the two exists at a time; switching between them is a state-only
+# swap, since deleting an `azapi_update_resource` doesn't touch Azure.
 
 resource "azapi_update_resource" "long_term_retention" {
-  count = var.long_term_retention != null ? 1 : 0
+  count = try(var.long_term_retention.yearly_retention, null) != null ? 1 : 0
 
   name      = "default"
   parent_id = azapi_resource.this.id
@@ -203,9 +210,32 @@ resource "azapi_update_resource" "long_term_retention" {
     properties = {
       monthlyRetention = coalesce(var.long_term_retention.monthly_retention, "PT0S")
       weeklyRetention  = coalesce(var.long_term_retention.weekly_retention, "PT0S")
-      weekOfYear       = coalesce(var.long_term_retention.week_of_year, 0)
-      yearlyRetention  = coalesce(var.long_term_retention.yearly_retention, "PT0S")
+      weekOfYear       = var.long_term_retention.week_of_year
+      yearlyRetention  = var.long_term_retention.yearly_retention
     }
+  }
+}
+
+resource "azapi_update_resource" "long_term_retention_without_yearly" {
+  count = var.long_term_retention != null && try(var.long_term_retention.yearly_retention, null) == null ? 1 : 0
+
+  name      = "default"
+  parent_id = azapi_resource.this.id
+  type      = "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies@2025-01-01"
+
+  body = {
+    properties = {
+      monthlyRetention = coalesce(var.long_term_retention.monthly_retention, "PT0S")
+      weeklyRetention  = coalesce(var.long_term_retention.weekly_retention, "PT0S")
+      weekOfYear       = 1
+      yearlyRetention  = "PT0S"
+    }
+  }
+
+  lifecycle {
+    # ARM reads it back as 0 while no yearly backup is kept. Dotted path only:
+    # an index step into the dynamic `body` would ignore the whole parent.
+    ignore_changes = [body.properties.weekOfYear]
   }
 }
 

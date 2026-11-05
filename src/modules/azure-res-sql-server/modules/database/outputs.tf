@@ -20,7 +20,7 @@ output "short_term_retention_resource_id" {
 
 output "long_term_retention_resource_id" {
   description = "Resource ID of the long-term retention policy. Null when `long_term_retention` is not set - meaning no backup of this database survives deletion of its server."
-  value       = try(azapi_update_resource.long_term_retention[0].id, null)
+  value       = try(coalesce(one(azapi_update_resource.long_term_retention[*].id), one(azapi_update_resource.long_term_retention_without_yearly[*].id)), null)
 }
 
 output "role_assignments" {
