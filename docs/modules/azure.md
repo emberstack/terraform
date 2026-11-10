@@ -71,6 +71,7 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-ptn-policy-assignment-collection`](../../src/modules/azure-ptn-policy-assignment-collection/) | Many policy or initiative assignments from one map, each [scope-routed](#scope-routing), with role assignments for their system identities |
 | [`azure-ptn-policy-exemption-collection`](../../src/modules/azure-ptn-policy-exemption-collection/) | Many policy exemptions from one map |
 | [`azure-ptn-security-pricing-collection`](../../src/modules/azure-ptn-security-pricing-collection/) | Defender for Cloud plans of a subscription — tier, sub-plan and extensions — with optional malware-scan-results diagnostic settings on every blob storage account |
+| [`azure-ptn-securityinsights-alertrules`](../../src/modules/azure-ptn-securityinsights-alertrules/) | Microsoft Sentinel scheduled analytics rules on an existing Sentinel-enabled workspace — unset optional keys omitted from the request, so ARM defaults are never overwritten |
 
 ## Scope routing
 
