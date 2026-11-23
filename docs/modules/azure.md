@@ -46,8 +46,9 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-res-policy-exemption`](../../src/modules/azure-res-policy-exemption/) | Policy exemption, [scope-routed](#scope-routing) |
 | [`azure-res-policy-set-definition`](../../src/modules/azure-res-policy-set-definition/) | Policy initiative |
 | [`azure-res-security-securitycontact`](../../src/modules/azure-res-security-securitycontact/) | Defender for Cloud security contact — who is emailed about alerts and attack paths, and from which severity or risk |
+| [`azure-res-security-standardassignment`](../../src/modules/azure-res-security-standardassignment/) | Defender for Cloud standard assignment with the `Exempt` effect for one recommendation (assessment key), [scope-routed](#scope-routing) — for recommendations with no Azure Policy definition behind them |
 | [`azure-res-signalrservice-signalr`](../../src/modules/azure-res-signalrservice-signalr/) | SignalR service, with network ACL, private endpoint, diagnostic settings, lock and role assignments |
-| [`azure-res-sql-managedinstance`](../../src/modules/azure-res-sql-managedinstance/) | Azure SQL managed instance, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, threat protection, vulnerability assessment, diagnostic settings, lock and role assignments — identity, key and SKU all in the create PUT, so a CMK instance needs no second pass ([SKU names](#managed-instance-sku-names)) |
+| [`azure-res-sql-managedinstance`](../../src/modules/azure-res-sql-managedinstance/) | Azure SQL managed instance, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, threat protection, vulnerability assessment, diagnostic settings, lock and role assignments — identity, key and SKU all in the create PUT, so a CMK instance needs no second pass ([SKU names](#managed-instance-sku-names)) (+ [`modules/database`](#submodule-managed-instance-database)) |
 | [`azure-res-sql-server`](../../src/modules/azure-res-sql-server/) | Azure SQL logical server, with Entra administrator, Entra-only authentication, customer-managed TDE with auto-rotation, auditing, connection policy, firewall and virtual network rules, private endpoint, diagnostic settings, lock and role assignments (+ [`modules/elastic-pool`](#submodule-elastic-pool-and-database), [`modules/database`](#submodule-elastic-pool-and-database)) |
 
 ## Pattern modules
@@ -71,11 +72,13 @@ lacks. Keep new inputs shaped the AVM way.
 | [`azure-ptn-policy-assignment-collection`](../../src/modules/azure-ptn-policy-assignment-collection/) | Many policy or initiative assignments from one map, each [scope-routed](#scope-routing), with role assignments for their system identities |
 | [`azure-ptn-policy-exemption-collection`](../../src/modules/azure-ptn-policy-exemption-collection/) | Many policy exemptions from one map |
 | [`azure-ptn-security-pricing-collection`](../../src/modules/azure-ptn-security-pricing-collection/) | Defender for Cloud plans of a subscription — tier, sub-plan and extensions — with optional malware-scan-results diagnostic settings on every blob storage account |
+| [`azure-ptn-security-standardassignment-collection`](../../src/modules/azure-ptn-security-standardassignment-collection/) | Many Defender for Cloud recommendation exemptions from one map |
 | [`azure-ptn-securityinsights-alertrules`](../../src/modules/azure-ptn-securityinsights-alertrules/) | Microsoft Sentinel scheduled analytics rules on an existing Sentinel-enabled workspace — unset optional keys omitted from the request, so ARM defaults are never overwritten |
 
 ## Scope routing
 
-`azure-res-policy-assignment` and `azure-res-policy-exemption` accept a single `scope` string, which
+`azure-res-policy-assignment`, `azure-res-policy-exemption` and `azure-res-security-standardassignment`
+accept a single `scope` string, which
 becomes the resource's `parent_id`. ARM anchors these resources by parent, so one resource covers every
 scope kind:
 
@@ -346,6 +349,28 @@ none. `week_of_year` is required whenever `yearly_retention` is set, or ARM keep
 yearly backup at all. Without a yearly backup the module sends `weekOfYear = 1` and
 ignores the field: ARM rejects 0 on write but reads it back as 0, so sending 1 alone
 would diff on every plan.
+
+## Submodule: managed instance database
+
+[`azure-res-sql-managedinstance/modules/database`](../../src/modules/azure-res-sql-managedinstance/modules/database/)
+
+Takes the instance's ARM resource ID as `parent_id`, so a configuration that does not own
+the instance can manage its databases. It exists for the same reason as the logical-server
+database submodule: both retention policies are child resources ARM creates with the
+database, at 7 days of PITR and no LTR, and they are easy to leave there.
+
+The differences from the logical-server version:
+
+- `short_term_retention` takes `retention_days` only. A managed instance schedules its own
+  differential backups every 12 hours.
+- There is no SKU, size, pool or backup storage redundancy - a managed instance governs all
+  of those at the instance.
+- Only the properties that describe the database are modelled. The restore and migration
+  create modes are one-shot instructions, and sending them on every update would request
+  the restore again.
+
+LTR is the only backup class that outlives the instance. The no-yearly `weekOfYear` handling
+is the same as the logical-server module's.
 
 ## Submodule: origin-group, afd-endpoint and rule-set
 
